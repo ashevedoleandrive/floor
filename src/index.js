@@ -9,6 +9,11 @@ import { pickLang, langCookie, t as makeT, LANGS } from "./lib/i18n.js";
 import { renderSettings, settingsScript } from "./lib/views-settings.js";
 import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, classifySource, ruleUsage, TIERS } from "./lib/sources.js";
 import { computeCoverage } from "./lib/coverage.js";
+import {
+  updateAccount, archiveAccount, unarchiveAccount, assessmentHistory,
+  deleteAssessment, restoreAssessment, updateGold, addGold, archiveGold,
+  updateCard, archiveCard, reorderRules, setSettingLogged, settingsHistory,
+} from "./lib/mutations.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), {
@@ -61,7 +66,47 @@ export default {
       if (p === "/api/source-rules" && request.method === "POST") return json(await saveRule(env, request));
       if (p === "/api/source-rules") return json(await listRules(env));
       if (p === "/api/export.csv") return exportCsv(env);
-      if (p.startsWith("/api/account/")) return json(await accountDetail(env, decodeURIComponent(p.slice(13))));
+      if (p === "/api/settings/history") return json({ ok: true, history: await settingsHistory(env) });
+
+      // Operator writes. Reads stay on GET; anything that changes state is a POST
+      // with the action in the path, so a mutation can never be triggered by
+      // following a link or by a crawler.
+      if (p.startsWith("/api/account/")) {
+        const rest = decodeURIComponent(p.slice(13)).split("/");
+        const domain = normaliseDomain(rest[0]);
+        const action = rest[1] || null;
+        if (action === "history") return accountWrite(env, request, domain, "history");
+        if (request.method === "POST") return accountWrite(env, request, domain, action);
+        return json(await accountDetail(env, domain));
+      }
+      if (p.startsWith("/api/assessment/") && request.method === "POST") {
+        const [idStr, action] = p.slice(16).split("/");
+        const id = Number(idStr);
+        if (action === "restore") return written(() => restoreAssessment(env, id).then((assessment) => ({ assessment })));
+        return written(() => deleteAssessment(env, id));
+      }
+      if (p === "/api/gold/add" && request.method === "POST")
+        return written(async () => ({ row: await addGold(env, await request.json().catch(() => ({}))) }));
+      if (p.startsWith("/api/gold/") && request.method === "POST") {
+        const [idStr, action] = p.slice(10).split("/");
+        const id = Number(idStr);
+        if (action === "archive") {
+          const b = await request.json().catch(() => ({}));
+          return written(async () => ({ row: await archiveGold(env, id, b.on !== false) }));
+        }
+        return written(async () => updateGold(env, id, await request.json().catch(() => ({}))));
+      }
+      if (p === "/api/source-rules/reorder" && request.method === "POST")
+        return written(async () => ({ order: await reorderRules(env, (await request.json().catch(() => ({}))).ids) }));
+      if (p.startsWith("/api/backlog/") && request.method === "POST") {
+        const [idStr, action] = p.slice(13).split("/");
+        const id = Number(idStr);
+        if (action === "archive") {
+          const b = await request.json().catch(() => ({}));
+          return written(async () => ({ card: await archiveCard(env, id, b.on !== false) }));
+        }
+        return written(async () => updateCard(env, id, await request.json().catch(() => ({}))));
+      }
 
       if (p === "/")            return html(await renderQueue(env, await buildQueue(env), { lang, t }));
       if (p === "/evals")       return html(await renderEvals(env, await listEvals(env), await listGold(env), { lang, t }));
@@ -648,8 +693,45 @@ async function saveSettings(env, request) {
   const allowed = ["floor_txn", "cooldown_days", "search_usd", "acv_usd",
                    "model_research", "model_extract", "model_critic",
                    "daily_cap_usd", "tier_unclassified_weight"];
-  for (const k of allowed) if (b[k] !== undefined) await setSetting(env, k, b[k]);
-  return { ok: true, settings: await getSettings(env) };
+  // Logged rather than silently set: a setting change re-grades every stored
+  // assessment on the next render, so "why did the queue change" needs an answer.
+  const changed = [];
+  for (const k of allowed) {
+    if (b[k] === undefined) continue;
+    const r = await setSettingLogged(env, k, b[k]);
+    if (r.changed) changed.push(r);
+  }
+  return { ok: true, changed, settings: await getSettings(env) };
+}
+
+/* ------------------------------------------------------------------ *
+ * Operator writes.
+ *
+ * Everything below exists because of the completeness audit: thirteen
+ * operations an operator would obviously want, that the product could not
+ * perform at all. The governing rule is that an action is only reversible if
+ * it is reversible in the interface, so every response carries what the caller
+ * needs to undo it without having read the row first.
+ * ------------------------------------------------------------------ */
+
+/** Turn an InvalidInput into a 400 the screen can render under the right field. */
+const written = async (fn) => {
+  try { return json({ ok: true, ...(await fn()) }); }
+  catch (e) {
+    if (e?.invalid) return json({ ok: false, field: e.field, error: e.message }, 400);
+    throw e;
+  }
+};
+
+async function accountWrite(env, request, domain, action) {
+  const b = await request.json().catch(() => ({}));
+  if (action === "archive")   return written(() => archiveAccount(env, domain));
+  if (action === "unarchive")  return written(() => unarchiveAccount(env, domain).then((account) => ({ account })));
+  if (action === "history") {
+    const a = await env.DB.prepare("SELECT id FROM accounts WHERE domain=?").bind(domain).first();
+    return json({ ok: true, history: a ? await assessmentHistory(env, a.id) : [] });
+  }
+  return written(() => updateAccount(env, domain, b));
 }
 
 /**

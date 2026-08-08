@@ -68,8 +68,11 @@ export async function upsertAccount(env, { domain, name, region, last_touched_at
 }
 
 export async function latestAssessment(env, accountId) {
+  // Deleted runs are excluded here rather than filtered at the call sites, so a
+  // bad assessment stops scoring the account the moment it is removed and the
+  // previous run takes over. Filtering downstream is how one caller gets missed.
   return env.DB.prepare(
-    "SELECT * FROM assessments WHERE account_id=? ORDER BY run_at DESC, id DESC LIMIT 1"
+    "SELECT * FROM assessments WHERE account_id=? AND deleted_at IS NULL ORDER BY run_at DESC, id DESC LIMIT 1"
   ).bind(accountId).first();
 }
 
@@ -153,8 +156,11 @@ export async function queueRows(env) {
            s.confidence, s.abstained, s.abstain_reason, s.method, s.cost_usd, s.latency_ms
     FROM accounts a
     LEFT JOIN assessments s ON s.id = (
-      SELECT id FROM assessments WHERE account_id = a.id ORDER BY run_at DESC, id DESC LIMIT 1
+      SELECT id FROM assessments
+      WHERE account_id = a.id AND deleted_at IS NULL
+      ORDER BY run_at DESC, id DESC LIMIT 1
     )
+    WHERE a.archived_at IS NULL
     ORDER BY a.domain
   `).all();
   return results || [];
