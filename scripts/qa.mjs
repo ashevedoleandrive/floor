@@ -16,13 +16,17 @@
  *   node scripts/qa.mjs --url http://localhost:8787
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 const BASE = process.argv.includes("--url")
   ? process.argv[process.argv.indexOf("--url") + 1]
   : "https://floor.leandrive.workers.dev";
 
-const PAGES = ["/", "/sources", "/evals", "/model", "/backlog", "/wired", "/account/zalando.com"];
+// /settings was absent from this list until 2026-08-08, which is the whole reason
+// the gate read 120 passing while the Settings page shipped with no stylesheet at
+// all. A page that is not fetched is not checked, and an unchecked page is where
+// the bug goes. Every route the router serves belongs here.
+const PAGES = ["/", "/sources", "/evals", "/model", "/backlog", "/wired", "/settings", "/account/zalando.com"];
 
 const API = [
   ["/api/health", (d) => d.ok === true && typeof d.mode === "string"],
@@ -60,8 +64,8 @@ const ok = (m) => { results.pass++; console.log(`  \x1b[32mPASS\x1b[0m ${m}`); }
 const bad = (m) => { results.fail++; console.log(`  \x1b[31mFAIL\x1b[0m ${m}`); results.notes.push(m); };
 const warn = (m) => { results.warn++; console.log(`  \x1b[33mWARN\x1b[0m ${m}`); };
 
-async function get(path) {
-  const r = await fetch(BASE + path, { redirect: "manual" });
+async function get(path, init = {}) {
+  const r = await fetch(BASE + path, { redirect: "manual", ...init });
   const body = await r.text();
   return { status: r.status, body, type: r.headers.get("content-type") || "" };
 }
@@ -167,6 +171,129 @@ async function main() {
     if (/href=["']https?:\/\/(cdn|fonts|unpkg|cdnjs)/.test(h)) bad(`${page} loads a remote asset, which breaks offline`);
   }
   if (results.notes.length === 0) ok("no em dashes, undefined, NaN or remote assets on any page");
+
+  /* ------------------------------------------------------------------ *
+   * Checks added for the 2026-08-08 rebuild.
+   *
+   * Each one exists because a specific failure shipped to production and was
+   * found by a human rather than by this gate.
+   * ------------------------------------------------------------------ */
+
+  console.log("\nEvery class in the markup is actually styled");
+  // The Settings bug: `.set-row`, `.set-label`, `.set-hint` and seven siblings
+  // were emitted into the page and defined in no stylesheet, so the screen
+  // collapsed into run-on text. Nothing errored, nothing 404'd, and the gate was
+  // green. A class family with no CSS is the signature of a whole screen that was
+  // never rendered by whoever wrote it.
+  const styleSources = [];
+  for (const f of ["app.css", "floor.css"]) {
+    try { styleSources.push(readFileSync(new URL(`../public/static/${f}`, import.meta.url), "utf8")); }
+    catch { /* floor.css does not exist until the foundation lands */ }
+  }
+  for (const [page, h] of Object.entries(html)) {
+    if (!h) continue;
+    const inline = [...h.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join("\n");
+    const css = styleSources.join("\n") + "\n" + inline;
+    const defined = new Set();
+    for (const m of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) defined.add(m[1]);
+    const used = new Map();
+    for (const m of h.matchAll(/\sclass=["']([^"']+)["']/g))
+      for (const c of m[1].split(/\s+/).filter(Boolean)) used.set(c, (used.get(c) || 0) + 1);
+    const orphans = [...used].filter(([c, n]) => !defined.has(c) && n >= 3).sort((a, b) => b[1] - a[1]);
+    if (orphans.length) {
+      bad(`${page} emits ${orphans.length} class(es) that no stylesheet defines: ${
+        orphans.slice(0, 6).map(([c, n]) => `.${c}(x${n})`).join(" ")}`);
+    } else ok(`${page} every repeated class has CSS`);
+  }
+
+  // The authored key list, read from the dictionary itself so this can never
+  // drift from what the product actually defines.
+  let I18N_KEYS = new Set();
+  try {
+    const src = readFileSync(new URL("../src/lib/i18n.js", import.meta.url), "utf8");
+    for (const m of src.matchAll(/["']([a-z][\w]*(?:\.[\w]+)+)["']\s*:/g)) I18N_KEYS.add(m[1]);
+  } catch { warn("could not read i18n.js, untranslated-key check is inert"); }
+
+  console.log("\nBoth languages render");
+  // A layout that only holds in English is not done. Spanish runs 15 to 25 percent
+  // longer, and an untranslated key renders as its own dotted name, which is the
+  // tell this looks for.
+  for (const p of PAGES) {
+    try {
+      const r = await get(p, { headers: { cookie: "floor_lang=es" } });
+      if (r.status !== 200) { bad(`${p} in Spanish returned ${r.status}`); continue; }
+      const visible = r.body.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<style[\s\S]*?<\/style>/g, "");
+      // Compare against the real dictionary rather than guessing by shape: a
+      // domain like "doordash.com" has the same shape as a key like "nav.queue",
+      // and only the dictionary can tell them apart.
+      const raw = [...visible.matchAll(/>\s*([a-z]+(?:\.[a-zA-Z][\w.]*){1,})\s*</g)]
+        .map((m) => m[1]).filter((k) => I18N_KEYS.has(k));
+      if (raw.length) bad(`${p} in Spanish renders ${raw.length} untranslated key(s): ${[...new Set(raw)].slice(0, 4).join(", ")}`);
+      else if (r.body === html[p]) bad(`${p} is byte-identical in Spanish, so nothing translated`);
+      else ok(`${p} in Spanish`);
+    } catch (e) { bad(`${p} in Spanish threw: ${e.message}`); }
+  }
+
+  console.log("\nRebuild rules hold in the new source");
+  // These scan only the rebuilt files. The legacy views.js and app.js are exempt
+  // by design: they are being replaced page by page and failing on them would
+  // make the gate useless for the duration of the migration.
+  const newFiles = [];
+  for (const rel of ["../public/static/floor.js", "../public/static/floor.css", "../src/ui/kit.js"]) {
+    try { newFiles.push([rel.split("/").pop(), readFileSync(new URL(rel, import.meta.url), "utf8")]); } catch { /* not yet built */ }
+  }
+  try {
+    const dir = new URL("../src/ui/", import.meta.url);
+    for (const f of readdirSync(dir).filter((f) => f.startsWith("page-") && f.endsWith(".js")))
+      newFiles.push([f, readFileSync(new URL(f, dir), "utf8")]);
+  } catch { /* src/ui may not exist yet */ }
+
+  if (!newFiles.length) warn("no rebuilt files on disk yet, rebuild rules not exercised");
+  for (const [name, src] of newFiles) {
+    const strip = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    if (/location\.reload\s*\(/.test(strip)) bad(`${name} calls location.reload(), which is the dead-feeling state model the rebuild removes`);
+    else ok(`${name} has no page reloads`);
+    if (/—/.test(strip)) bad(`${name} contains an em dash in source`);
+  }
+  for (const [name, src] of newFiles.filter(([n]) => n.endsWith(".css"))) {
+    // Motion at rest. An `animation:` outside a running-state or reduced-motion
+    // scope is the glowing status dot the operator called out by name.
+    const blocks = [...src.matchAll(/([^{}]+)\{([^}]*)\}/g)];
+    const offenders = blocks.filter(([, sel, body]) =>
+      /animation\s*:/.test(body) && !/none/.test(body) &&
+      !/\[data-running\]|\.is-running|@keyframes|prefers-reduced-motion/.test(sel));
+    offenders.length
+      ? bad(`${name} animates ${offenders.length} selector(s) at rest: ${offenders.slice(0, 3).map((o) => o[1].trim().slice(0, 30)).join(" · ")}`)
+      : ok(`${name} nothing animates at rest`);
+    /prefers-reduced-motion/.test(src) ? ok(`${name} honours prefers-reduced-motion`) : bad(`${name} has no prefers-reduced-motion block`);
+  }
+  for (const [name, src] of newFiles.filter(([n]) => n.startsWith("page-"))) {
+    // Page CSS must be scoped, or one page restyles every other page.
+    const cssFn = src.match(/export function css\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/);
+    if (!cssFn) { warn(`${name} exports no css()`); continue; }
+    const scope = (src.match(/route:\s*["']([^"']+)["']/) || [])[1];
+    const cls = scope === "/" ? "p-queue" : `p-${(scope || "").replace(/^\//, "").split("/")[0]}`;
+    const sels = [...cssFn[1].matchAll(/(^|\n)\s*([.#][^{\n]+)\{/g)].map((m) => m[2].trim());
+    const leaks = sels.filter((s) => !s.includes(`.${cls}`));
+    leaks.length
+      ? bad(`${name} has ${leaks.length} unscoped selector(s) that leak into other pages: ${leaks.slice(0, 3).join(" · ")}`)
+      : ok(`${name} css is scoped to .${cls}`);
+  }
+
+  console.log("\nThe gauge tells the truth at the top of the range");
+  // DoorDash is 258.7M against a track that clamped at 100M, so the product's most
+  // impressive number rendered as a clipped sliver with its tick off the bar.
+  try {
+    const q = JSON.parse((await get("/api/queue")).body);
+    const top = Math.max(...q.rows.map((r) => Number(r.txn_max || r.txn_mid || 0)));
+    const home = html["/"] || "";
+    const widths = [...home.matchAll(/class="bar"[^>]*style="left:([\d.]+)%;width:([\d.]+)%/g)]
+      .map((m) => Number(m[1]) + Number(m[2]));
+    const pinned = widths.filter((w) => w >= 99.9).length;
+    if (!widths.length) warn("no gauge bars found on the queue, cannot check the ceiling");
+    else if (pinned) bad(`${pinned} gauge bar(s) run to the end of the track, so the scale clamps below the real maximum (${top.toLocaleString()} txn/mo)`);
+    else ok(`gauge accommodates the largest account (${top.toLocaleString()} txn/mo)`);
+  } catch (e) { warn(`gauge ceiling check failed: ${e.message}`); }
 
   console.log(`\n${"=".repeat(60)}`);
   console.log(`${results.pass} passed · ${results.fail} failed · ${results.warn} warnings`);
