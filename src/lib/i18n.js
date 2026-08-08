@@ -836,6 +836,28 @@ export const COPY = {
   "set.saving":      { en: "Saving…", es: "Guardando…" },
   "set.saved":       { en: "Saved. Reloading to re-grade…", es: "Guardado. Recargando para recalificar…" },
   "set.saveFail":    { en: "Could not save: {err}", es: "No se pudo guardar: {err}" },
+
+  // ---- kit (foundation layer; appended by the foundation author) ----------
+  "nav.coverage":         { en: "Coverage", es: "Cobertura" },
+  "kit.context":          { en: "Yuno SDR", es: "Yuno SDR" },
+  "kit.skip":             { en: "Skip to content", es: "Saltar al contenido" },
+  "kit.gauge.aria": {
+    en: "Estimate {mid} transactions per month, range {min} to {max}, floor {floor}",
+    es: "Estimación de {mid} transacciones al mes, rango de {min} a {max}, umbral de {floor}",
+  },
+  "kit.gauge.abstainAria": { en: "Abstained, no estimate issued", es: "Se abstuvo, no se emitió una estimación" },
+  "kit.gauge.beyond":     { en: "beyond scale", es: "fuera de escala" },
+  "kit.gauge.floor":      { en: "floor {floor}", es: "umbral {floor}" },
+  "kit.menu.aria":        { en: "Actions", es: "Acciones" },
+  "kit.select.all":       { en: "Select all", es: "Seleccionar todas" },
+  "kit.select.row":       { en: "Select row", es: "Seleccionar fila" },
+  "kit.bulk.selected":    { en: "{n} selected", es: "{n} seleccionadas" },
+  "kit.bulk.clear":       { en: "Clear", es: "Quitar" },
+  "kit.undo":             { en: "Undo", es: "Deshacer" },
+  "kit.cancel":           { en: "Cancel", es: "Cancelar" },
+  "kit.confirm":          { en: "Confirm", es: "Confirmar" },
+  "kit.close":            { en: "Close", es: "Cerrar" },
+  "kit.level.aria":       { en: "{n} of {of}", es: "{n} de {of}" },
 };
 
 /** Translator bound to a language. Interpolates {tokens}. */
