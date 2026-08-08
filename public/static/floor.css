@@ -53,6 +53,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+[hidden] { display: none !important; }
 body {
   background: var(--paper);
   color: var(--ink-1);
@@ -260,6 +261,7 @@ main { max-width: 1248px; margin: 0 auto; padding: 0 24px 96px; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .stat-v.none { color: var(--ink-4); font-weight: 400; }
+.stat-v.word { font-family: var(--sans); font-size: 20px; letter-spacing: -.01em; }
 .stat-n { display: block; margin-top: 4px; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
 
 /* ===================== §3.7 · marks + levels ======================= */
@@ -327,7 +329,7 @@ main { max-width: 1248px; margin: 0 auto; padding: 0 24px 96px; }
 .g-hero .g-slot { top: 8px; height: 12px; }
 .g-hero .g-over { top: 7px; }
 .g-flag {
-  position: absolute; top: -18px; transform: translateX(-50%);
+  position: absolute; top: -18px; left: 1px; transform: translateX(-50%);
   color: var(--ink-2); white-space: nowrap;
 }
 .g-wrap { padding-top: 18px; }             /* room for the floor flag */
@@ -512,7 +514,6 @@ dialog.dlg::backdrop { background: rgba(23, 23, 27, .32); }
   max-width: min(420px, calc(100vw - 48px));
 }
 .toast .btn-text { height: auto; flex: none; }
-.toast-in { animation: toast-in .18s var(--ease); }
 
 /* ===================== C2 · bulk bar (overlay) ===================== */
 
@@ -521,7 +522,6 @@ dialog.dlg::backdrop { background: rgba(23, 23, 27, .32); }
   z-index: 85; display: flex; align-items: center; gap: 12px;
   background: var(--white); border-radius: 10px; box-shadow: var(--shadow);
   padding: 8px 8px 8px 16px; white-space: nowrap;
-  animation: toast-in .18s var(--ease);
 }
 #bulkbar .bulk-n { font-weight: 600; font-size: 13px; }
 #bulkbar .bulk-sep { width: 1px; height: 16px; background: var(--line); }
@@ -562,9 +562,11 @@ dialog.dlg::backdrop { background: rgba(23, 23, 27, .32); }
 
 /* ================== progress: the one sanctioned loop ============== */
 
+/* The class is the claim: .is-running may only be present while a job
+   genuinely runs, and it must come off the moment the stage ends. */
 .prog { height: 2px; background: var(--well); border-radius: 1px; overflow: hidden; }
 .prog > i { display: block; height: 100%; width: 100%; background: var(--accent); border-radius: 1px; }
-.prog.run > i { width: 38%; animation: floor-sweep 1.4s var(--ease) infinite; }
+.prog.is-running > i { width: 38%; animation: floor-sweep 1.4s var(--ease) infinite; }
 
 /* ================== confirmation flash (§3.8) ====================== */
 
@@ -574,9 +576,12 @@ tr.flash td { border-bottom-color: var(--accent); }
 /* ============================ motion =============================== */
 
 @keyframes floor-sweep { from { transform: translateX(-110%); } to { transform: translateX(370%); } }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes dlg-in   { from { opacity: 0; transform: translateY(6px) scale(.99); } to { opacity: 1; transform: none; } }
-dialog.dlg[open] { animation: dlg-in .18s var(--ease); }
+
+/* Overlay entry: a transition, not an idle animation. floor.js creates
+   the element with .enter and removes it on the next frame. */
+.toast, #bulkbar { transition: opacity .18s var(--ease), transform .18s var(--ease); }
+.toast.enter { opacity: 0; transform: translateY(8px); }
+#bulkbar.enter { opacity: 0; transform: translate(-50%, 8px); }
 tr.flash td { transition: border-bottom-color .3s var(--ease); }
 
 @media (prefers-reduced-motion: reduce) {
