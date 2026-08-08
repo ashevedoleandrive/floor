@@ -253,10 +253,54 @@ capped at 5 exposed that `max_uses` was not behaving as assumed.
 
 ---
 
+## 15. A test harness can report its own impatience as a product failure
+
+The batch script polled each job for eight minutes and then printed `TIMEOUT`.
+Four accounts timed out. All four had completed successfully server-side. A run
+is about four minutes alone, but the queue consumer caps concurrency, so parallel
+submissions contend and a single account can legitimately take eight to fourteen
+minutes. The ceiling was raised to twenty, and the timeout message now says to
+check the real state before assuming failure.
+
+This is worse than a slow run, because it manufactures bugs that then get
+"fixed." Two of the wrong diagnoses in entry 3 were reinforced by exactly this
+kind of false signal.
+
+**Transferable:** a harness that can report a false failure is a harness that
+will send you debugging something that works. Set its patience from the measured
+worst case, not the happy path, and make its failure message admit its own
+uncertainty.
+
+---
+
+## 16. "Looks professional" and "looks designed" are different bars
+
+The visual layer passed every functional check and was rejected on sight:
+*"still looks like ai once passed it... standard claude cards formats. not perfect
+alignment. those live intermitent buttons. the pills."*
+
+The named tells are worth writing down because they are specific and they recur:
+a default three-across card grid with every section at equal weight, optical
+misalignment between adjacent elements, status pills as the default way to render
+any state, and buttons that animate for no reason. Each is a local decision that
+looks fine alone. Together they are a signature.
+
+The deeper error was in the brief, not the output. I asked an agent to "research
+the best B2B products" without naming any, so "best" resolved to
+competent-generic. And I wrote "keep the existing CSS if you still believe in
+it," which is not a constraint, it is permission to change nothing.
+
+**Transferable:** name the reference set explicitly and name the tells to avoid.
+A brief should be short in instructions and precise in every one of them. Never
+give a design brief an escape hatch back to the status quo.
+
+---
+
 ## Standing rules that came out of this
 
 1. Print the raw response structure before trusting any accessor over it.
-2. When a symptom survives three structural fixes, question the diagnosis.
+2. When a symptom survives **two** structural fixes, the diagnosis is wrong. Stop
+   fixing and isolate the variable instead.
 3. Two runs differing in one dimension isolate the cause. Read that, not vibes.
 4. Any number on screen is either deterministic or labelled as a judgement.
 5. If a rating moves when its subject did not, it measures something else.
@@ -265,3 +309,7 @@ capped at 5 exposed that `max_uses` was not behaving as assumed.
 8. Build the check that can disagree with you.
 9. Separate numbers you measured from numbers you illustrated with.
 10. Design to the decision, not to the most rigorous measurement.
+11. Every object needs create, read, update and delete before it ships.
+12. A harness's failure report is a claim. Check the real state before debugging.
+13. Name the references and the tells in a design brief. "Best" is not a bar.
+14. State regional coverage before recommending a source, not after.
