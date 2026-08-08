@@ -77,28 +77,7 @@ inputs, same answer, every time.
 
 ## Architecture
 
-```
-  Browser ──POST /api/assess──►  Worker  ──enqueue──►  Cloudflare Queue
-                                   │                        │
-                                   │                        ▼
-     poll /api/job/:id ◄───────────┘                  Queue consumer
-                                                            │
-                              ┌─────────────────────────────┤
-                              ▼             ▼               ▼
-                        1. Research    2. Extract      3. Critic
-                        Sonnet 5 +     Sonnet 5,       Opus 5,
-                        web search     no tools        no tools
-                        gather cited   prose to        try to refute
-                        evidence       typed claims    every claim
-                              └─────────────┴───────────────┘
-                                            │
-                                            ▼
-                                     4. Score (plain code)
-                                     fit · timing · cool-down
-                                            │
-                                            ▼
-                                          D1
-```
+![Floor system map](docs/floor-system-map.png)
 
 **Why three model calls instead of one prompt.** If one model did all of it, it
 would be checking its own work and it would pass itself. Splitting them means the

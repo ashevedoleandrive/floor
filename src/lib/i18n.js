@@ -202,6 +202,7 @@ export const COPY = {
   // ---- misc -------------------------------------------------------------
   "common.loading": { en: "Loading", es: "Cargando" },
   "common.empty":   { en: "Nothing here yet.", es: "Todavía no hay nada aquí." },
+  "chrome.howItWorks": { en: "How it works", es: "Cómo funciona" },
   "lang.switchTo":  { en: "Español", es: "English" },
   "lang.label":     { en: "Language", es: "Idioma" },
   "common.undated": { en: "undated", es: "sin fecha" },

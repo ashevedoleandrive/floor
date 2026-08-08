@@ -8,6 +8,7 @@ import { renderQueue, renderAccount, renderEvals, renderBacklog, renderModel, re
 import { pickLang, langCookie, t as makeT, LANGS } from "./lib/i18n.js";
 import { renderSettings, settingsScript } from "./lib/views-settings.js";
 import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, classifySource, ruleUsage, TIERS } from "./lib/sources.js";
+import { computeCoverage } from "./lib/coverage.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data, null, 2), {
@@ -56,6 +57,7 @@ export default {
       if (p === "/api/evals/run" && request.method === "POST") return json(await runEval(env));
       if (p === "/api/evals")    return json(await listEvals(env));
       if (p === "/api/sources")  return json(sourceSummary());
+      if (p === "/api/coverage") return json(await computeCoverage(env));
       if (p === "/api/source-rules" && request.method === "POST") return json(await saveRule(env, request));
       if (p === "/api/source-rules") return json(await listRules(env));
       if (p === "/api/export.csv") return exportCsv(env);
@@ -139,7 +141,7 @@ async function health(env) {
   const settings = await getSettings(env);
   return {
     ok: true,
-    build: "settings-v17",
+    build: "map-v18",
     mode: budget.live() ? "live" : "cached",
     budget: { cap: budget.cap, spent: Number(budget.spent().toFixed(4)), remaining: Number(budget.remaining().toFixed(4)), day: budget.day },
     models: { research: settings.model_research, extract: settings.model_extract, critic: settings.model_critic },

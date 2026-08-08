@@ -894,3 +894,8 @@ th.s-on{color:var(--ink)}
    it on disable made the action irreversible from the UI. */
 #rules-table tr.off td { opacity: .5; }
 #rules-table tr.off .tier { filter: grayscale(1); }
+
+/* Quiet footer link. Present for anyone who wants the architecture, invisible
+   to anyone who does not. */
+footer a.quiet { color: var(--ink-3); text-decoration: none; }
+footer a.quiet:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }

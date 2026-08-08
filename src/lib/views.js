@@ -113,7 +113,7 @@ export function shell({ title, nav, mode, budget, body, script = "", lang = DEFA
 </header>
 ${mode === "cached" ? `<div class="banner"><b>${esc(T("chrome.capReached"))}</b> ${esc(T("chrome.capBody"))}</div>` : ""}
 <main>${body}</main>
-<footer><span>${esc(T("chrome.footer"))}</span><span>Bryan Acevedo · ${new Date().toISOString().slice(0, 10)}</span></footer>
+<footer><span>${esc(T("chrome.footer"))}</span><span><a class="quiet" href="https://github.com/ashevedoleandrive/floor/blob/main/docs/floor-system-map.png" target="_blank" rel="noopener">${esc(T("chrome.howItWorks"))}</a> · Bryan Acevedo · ${new Date().toISOString().slice(0, 10)}</span></footer>
 <script>window.FLOOR_I18N=${clientCopy}</script>
 <script>${script}</script>
 <script src="/static/app.js"></script>
