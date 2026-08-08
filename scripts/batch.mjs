@@ -56,8 +56,14 @@ async function assessOne(domain) {
   if (!start.job_id) return { domain, status: "error", note: start.error || "no job id" };
 
   const began = Date.now();
-  // Generous ceiling: three chained stages, each a model call, plus web search.
-  while (Date.now() - began < 8 * 60 * 1000) {
+  // Ceiling raised from 8 to 20 minutes after four false "timeouts".
+  //
+  // A run is ~4 minutes alone, but the queue consumer caps concurrency, so
+  // parallel submissions contend and a single account can legitimately take 8
+  // to 14 minutes. All four accounts that "timed out" at the old ceiling had in
+  // fact completed server-side. The script was reporting its own impatience as
+  // a product failure, which is a worse bug than a slow run.
+  while (Date.now() - began < 20 * 60 * 1000) {
     await sleep(5000);
     let j;
     try { j = await api(`/api/job/${start.job_id}`); } catch { continue; }
@@ -78,7 +84,7 @@ async function assessOne(domain) {
       };
     }
   }
-  return { domain, status: "timeout", note: "still running after 8 minutes" };
+  return { domain, status: "timeout", note: "still running after 20 minutes, check /api/job for the real state before assuming failure" };
 }
 
 async function main() {
