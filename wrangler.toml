@@ -1,0 +1,56 @@
+name = "floor"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets (styles + client JS). Worker runs first so it owns routing and
+# can enforce the read-only/cached mode banner before anything renders.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+html_handling = "none"
+not_found_handling = "none"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "floor-db"
+database_id = "19fa2370-da13-4bfd-b6a4-7190fd2ecca5"
+migrations_dir = "migrations"
+
+# Assessments run for minutes. A Worker request (and its waitUntil) will not
+# hold a multi-minute model call open: three separate attempts died mid-research
+# with the job orphaned. A Queue consumer is the primitive actually designed for
+# this, and it brings retries with it.
+[[queues.producers]]
+queue = "floor-assess"
+binding = "ASSESS_Q"
+
+[[queues.consumers]]
+queue = "floor-assess"
+max_batch_size = 1        # one account per invocation, so one slow run never blocks another
+max_batch_timeout = 5
+max_retries = 2
+max_concurrency = 3       # bounded: each message is 3 model calls and several searches
+
+[vars]
+ENVIRONMENT = "production"
+
+# Model routing. Extraction is high-volume and mechanical -> Sonnet 5.
+# The critic is adversarial judgment on a small payload -> Opus 5.
+# Both are overridable without a redeploy via the settings table.
+MODEL_RESEARCH = "claude-sonnet-5"
+MODEL_EXTRACT  = "claude-sonnet-5"
+MODEL_CRITIC   = "claude-opus-5"
+
+# Hard spend cap. The public URL is handed to a panel that is explicitly told to
+# run it themselves; without this, one curious visitor looping a 500-row list is
+# the author's bill. Exceeding it degrades to cached mode, it does not error.
+DAILY_USD_CAP = "8.00"
+
+# Cool-down default (days). Exposed as a tunable in the UI because their
+# re-touch policy is theirs to set, not mine to hardcode.
+COOLDOWN_DAYS_DEFAULT = "45"
+
+# ICP floor: monthly transactions. Yuno's stated qualification threshold.
+FLOOR_TXN_PER_MONTH = "100000"

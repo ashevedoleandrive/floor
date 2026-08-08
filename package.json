@@ -1,0 +1,20 @@
+{
+  "name": "floor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Account prioritisation for a finite enterprise TAM. Which accounts, and when.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply floor-db --local",
+    "db:remote": "wrangler d1 migrations apply floor-db --remote",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
