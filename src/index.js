@@ -56,7 +56,8 @@ const PAGES = {
       const found = await goldSources(env, row.domain, row.disclosed_metric);
       if (found.length) sources[row.domain] = found;
     }
-    return { evals, gold, sources, suggest: suggestGold({ goldRows: gold.rows, queueRows: q.rows }) };
+    return { evals, gold, sources, cost_per_account: q.cost.per_account,
+             suggest: suggestGold({ goldRows: gold.rows, queueRows: q.rows }) };
   } },
   "/model":    { mod: pageModel,    data: (env) => buildQueue(env) },
   "/wired":    { mod: pageWired,    data: (env) => buildQueue(env) },

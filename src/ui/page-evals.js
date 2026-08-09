@@ -45,6 +45,20 @@ import {
    gaps (add / edit / un-verify / archive / restore) and their copy. */
 
 export const keys = {
+  "evals.pendingLabel": { en: "Not checkable yet", es: "Aún no verificables" },
+  "evals.pendingTitle": {
+    en: "{n} merchants that disclose, but have never been assessed",
+    es: "{n} comercios que publican cifras, pero nunca se han analizado",
+  },
+  "evals.pendingSub": {
+    en: "these are not unverified, they are ungradeable: there is no estimate to compare a disclosure against until Floor has run",
+    es: "no están sin verificar, no se pueden calificar: no hay estimación con la cual comparar una cifra hasta que Floor los analice",
+  },
+  "evals.pendingFoot": {
+    en: "Assessing all of them costs about {c} at the measured rate, and each one then becomes checkable.",
+    es: "Analizarlos todos cuesta unos {c} al costo medido, y cada uno pasa a ser verificable.",
+  },
+
   "evals.progressSplit": {
     en: "{a} of {b} verified, {w} more waiting on an assessment",
     es: "{a} de {b} verificadas, {w} más esperan un análisis",
@@ -282,7 +296,17 @@ export async function render(env, data, ctx) {
   const waiting = activeRows.filter((g) => !g.verified && !(sources[g.domain] || []).length).length;
   // Archived rows never disappear (§5.4 undo doctrine); they stay in the
   // same table, dimmed, sorted after the active ones.
-  const sortedRows = [...activeRows, ...archivedRows];
+  // The gold set proper is only what can be graded: a row with no prediction
+  // has nothing to compare against, so it is not an answer-key entry yet. It is
+  // a note that a company discloses, and the action it deserves is "assess
+  // this", not "verify this". Mixing the two framed an upstream blocker as work
+  // the operator was failing to do.
+  const perAcct = Number(data?.cost_per_account || 0.2549);
+  const gradable = (g) => g.verified || (sources[g.domain] || []).length > 0;
+  const goldRows = [...activeRows.filter(gradable), ...archivedRows];
+  const pendingRows = activeRows.filter((g) => !gradable(g));
+  const pendingCost = "$" + (pendingRows.length * perAcct).toFixed(2);
+  const sortedRows = goldRows;
 
   // Cross-link law (§4.6): a gold row whose merchant has no live
   // assessment shows that plainly instead of silently looking wrong.
@@ -359,9 +383,7 @@ export async function render(env, data, ctx) {
         <span class="mono ink-3 ev-prog-n" id="ev-gold-prog-n">${esc(t("gold.progress", { a: verifiedActive, b: verifiedActive + verifiable }))}</span>
       </div>
       ${goldTable}
-      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: totalActive }))}${
-        waiting ? " " + esc(t("evals.waitingNote", { w: waiting })) : ""
-      }</p>`,
+      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: reachable }))}</p>`,
   });
 
   const verifyDlg = dialog({
@@ -447,6 +469,25 @@ export async function render(env, data, ctx) {
     });
   })();
 
+
+  /* Merchants that disclose but have never been assessed.
+   *
+   * Kept out of the gold table on purpose. There is nothing to compare them
+   * against, so calling them "unverified" would blame the operator for a step
+   * that happens somewhere else. The action here is assess, not verify. */
+  const pendingSection = pendingRows.length ? section({
+    label: t("evals.pendingLabel"),
+    title: t("evals.pendingTitle", { n: pendingRows.length }),
+    sub: t("evals.pendingSub"),
+    body: `<div class="ev-pend">${pendingRows.map((g) => `
+        <a class="ev-pend-row" href="/?q=${encodeURIComponent(g.domain)}">
+          <span class="nm">${esc(g.name || g.domain)}</span>
+          <span class="dom">${esc(g.domain)}</span>
+          <span class="met">${esc(g.disclosed_metric || "")}</span>
+        </a>`).join("")}</div>
+      <p class="ev-blind">${esc(t("evals.pendingFoot", { c: pendingCost }))}</p>`,
+  }) : "";
+
   return `
     <div class="whead">
       <div class="whead-t">
@@ -462,6 +503,7 @@ export async function render(env, data, ctx) {
     ${evalSection}
     ${nextSection}
     ${goldSection}
+    ${pendingSection}
     ${verifyDlg}
     ${editDlg}
     ${addDlg}
@@ -529,6 +571,16 @@ export function css() {
   .p-evals .ev-next-pred { font: 500 13px/1.5 var(--mono); color: var(--ink-3); white-space: nowrap; }
   .p-evals .ev-blind { font-size: 13px; color: var(--ink-3); margin-top: 12px; }
   .p-evals .ev-sat { font-size: 14px; color: var(--ink-2); }
+  .p-evals .ev-pend { display: grid; gap: 1px; background: var(--line-1); border-block: 1px solid var(--line-1); }
+  .p-evals .ev-pend-row {
+    background: var(--bg); padding: 11px 0; text-decoration: none; color: inherit;
+    display: grid; grid-template-columns: minmax(150px,1fr) minmax(140px,1fr) 2fr; gap: 16px; align-items: baseline;
+  }
+  .p-evals .ev-pend-row:hover .nm { text-decoration: underline; }
+  .p-evals .ev-pend-row .nm { font-weight: 560; }
+  .p-evals .ev-pend-row .dom { font: 500 12px/1.5 var(--mono); color: var(--ink-3); }
+  .p-evals .ev-pend-row .met { font-size: 13px; color: var(--ink-3); }
+
   .p-evals .ev-dom { font-size: 12px; margin-top: 2px; }
   .p-evals .ev-sub { font-size: 12px; line-height: 1.4; margin-top: 4px; }
   .p-evals .ev-sub a { color: var(--ink-3); }
