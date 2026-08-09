@@ -4,9 +4,7 @@ import {
   getSettings, setSetting, makeBudget, upsertAccount, saveAssessment,
   latestAssessment, getSignals, getEvidence, getTraces, queueRows, allSignals,
 } from "./lib/db.js";
-import { renderQueue, renderAccount, renderEvals, renderBacklog, renderModel, renderWired, renderSources, shell } from "./lib/views.js";
 import { pickLang, langCookie, t as makeT, LANGS, COPY } from "./lib/i18n.js";
-import { renderSettings, settingsScript } from "./lib/views-settings.js";
 import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, classifySource, ruleUsage, TIERS } from "./lib/sources.js";
 import { computeCoverage } from "./lib/coverage.js";
 import { shell as kitShell } from "./ui/kit.js";
@@ -180,13 +178,6 @@ export default {
       const rebuilt = PAGES[p];
       if (rebuilt) return html(await renderPage(rebuilt, env, { lang, t, path: p }));
 
-      if (p === "/")            return html(await renderQueue(env, await buildQueue(env), { lang, t }));
-      if (p === "/evals")       return html(await renderEvals(env, await listEvals(env), await listGold(env), { lang, t }));
-      if (p === "/backlog")     return html(await renderBacklog(env, await listBacklog(env), { lang, t }));
-      if (p === "/model")       return html(await renderModel(env, await buildQueue(env), { lang, t }));
-      if (p === "/settings")    return html(await settingsPage(env, { lang, t }));
-      if (p === "/sources")     return html(await renderSources(env, sourceSummary(), { lang, t }));
-      if (p === "/wired")       return html(await renderWired(env, { lang, t }));
       if (p.startsWith("/account/")) {
         const d = normaliseDomain(decodeURIComponent(p.slice(9)));
         const detail = d ? await accountDetail(env, d) : null;
@@ -237,25 +228,6 @@ async function runJobToCompletion(env, jobId, domain) {
 }
 
 
-/** The settings screen. Every knob that changes behaviour, in one place. */
-async function settingsPage(env, ctx) {
-  const settings = await getSettings(env);
-  const budget = await makeBudget(env);
-  const q = await buildQueue(env);
-  const { body } = await renderSettings(env, {
-    settings,
-    budget: { spent: budget.spent(), cap: budget.cap },
-    assessed: q.cost.assessed,
-    total_accounts: q.cost.total_accounts,
-    cost_per_account: q.cost.per_account,
-  }, ctx);
-  // Reuses the shared chrome from views.js so the settings screen never drifts
-  // from the rest of the product.
-  return shell({
-    title: "Settings", nav: "/settings", mode: q.mode, budget: q.budget,
-    body, script: settingsScript(), lang: ctx.lang, t: ctx.t,
-  });
-}
 
 async function health(env) {
   const budget = await makeBudget(env);

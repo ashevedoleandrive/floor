@@ -135,18 +135,20 @@ async function main() {
   }
 
   console.log("\nEvery client selector is accounted for");
+  // Reads the foundation client now that the legacy one is deleted. Every id it
+  // looks up must exist on some page, or the handler bound to it is dead.
   try {
-    const js = readFileSync(new URL("../public/static/app.js", import.meta.url), "utf8");
+    const js = readFileSync(new URL("../public/static/floor.js", import.meta.url), "utf8");
     const ids = new Set();
-    for (const m of js.matchAll(/\$\(["']#([a-zA-Z0-9_-]+)["']\)/g)) ids.add(m[1]);
-    const declared = new Set(Object.values(REQUIRED).flat().filter((s) => s.startsWith("#")).map((s) => s.slice(1)));
+    for (const m2 of js.matchAll(/(?:getElementById|\$\$?)\(\s*["'`]#?([a-zA-Z][\w-]*)["'`]/g)) ids.add(m2[1]);
+    const declared = new Set(Object.values(REQUIRED).flat().filter((x) => x.startsWith("#")).map((x) => x.slice(1)));
     const anywhere = Object.values(html).join("\n");
     for (const id of ids) {
       if (declared.has(id)) continue;
       if (new RegExp(`id=["']${id}["']`).test(anywhere)) ok(`#${id} bound and present`);
       else warn(`#${id} is looked up by the client but never rendered on any page`);
     }
-  } catch (e) { warn(`could not read app.js: ${e.message}`); }
+  } catch (e) { warn(`could not read floor.js: ${e.message}`); }
 
   console.log("\nInternal links resolve");
   const seen = new Set();
@@ -257,9 +259,8 @@ async function main() {
   }
 
   console.log("\nRebuild rules hold in the new source");
-  // These scan only the rebuilt files. The legacy views.js and app.js are exempt
-  // by design: they are being replaced page by page and failing on them would
-  // make the gate useless for the duration of the migration.
+  // The migration is complete and the legacy view layer is deleted, so these
+  // now cover every file that renders anything.
   const newFiles = [];
   for (const rel of ["../public/static/floor.js", "../public/static/floor.css", "../src/ui/kit.js"]) {
     try { newFiles.push([rel.split("/").pop(), readFileSync(new URL(rel, import.meta.url), "utf8")]); } catch { /* not yet built */ }
