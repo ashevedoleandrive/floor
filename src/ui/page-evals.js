@@ -168,8 +168,13 @@ const sourceCellHtml = (g, t, found) => {
   if (g.source_url) {
     return `<a class="mono" href="${esc(g.source_url)}" target="_blank" rel="noopener">${esc(host(g.source_url))} &#8599;</a>`;
   }
-  const links = (found || []).slice(0, 3).map((s) =>
-    `<a class="ev-src${s.primary ? " is-primary" : ""}" href="${esc(s.url)}" target="_blank" rel="noopener"
+  // The first link is the document that measures the metric this row asks for.
+  // Open that one. The rest are fallbacks and stay quiet so they do not read as
+  // four things to check.
+  const list = found || [];
+  const links = list.slice(0, 3).map((s, i) =>
+    `<a class="ev-src${i === 0 && s.answers ? " is-best" : ""}${s.primary ? " is-primary" : ""}"
+        href="${esc(s.url)}" target="_blank" rel="noopener"
         title="${esc(s.title || s.url)}">${esc(s.host)} &#8599;</a>`).join("");
   if (!links) {
     return g.source_note
@@ -476,6 +481,9 @@ export function css() {
   }
   .p-evals .ev-src:hover { color: var(--ink-1); text-decoration: underline; }
   .p-evals .ev-src.is-primary { color: var(--ink-2); }
+  /* The one that measures what this row is asking for. Open this first. */
+  .p-evals .ev-src.is-best { color: var(--ink-1); font-weight: 560; }
+  .p-evals .ev-src.is-best::before { content: "\\2192\\00a0"; color: var(--accent); }
 
   /* What to check next. Absent entirely when nothing would add information,
      because a panel that always has work in it is a chore generator. */

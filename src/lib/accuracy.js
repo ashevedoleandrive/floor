@@ -195,7 +195,7 @@ export function suggestGold({ goldRows, queueRows, limit = 3 }) {
  *
  * Primary filings sort first, because that is where the disclosed figure lives.
  */
-export async function goldSources(env, domain) {
+export async function goldSources(env, domain, disclosedMetric = "") {
   const { results } = await env.DB.prepare(`
     SELECT e.source_url, e.source_title, e.field, e.value
     FROM evidence e
@@ -205,6 +205,16 @@ export async function goldSources(env, domain) {
     ORDER BY e.id
   `).bind(domain).all();
 
+  // Which stored field answers the metric this row is asking for. The gold row
+  // says what to look for ("total orders / quarter"); the evidence is tagged
+  // with what it measures. Matching the two picks the one document worth
+  // opening first, instead of handing over every link Floor ever followed.
+  const want = String(disclosedMetric || "").toLowerCase();
+  const wanted = new Set();
+  if (/order|transaction|room night|trip|booking/.test(want)) { wanted.add("orders"); wanted.add("txn_volume"); }
+  if (/gmv|gms|volume|sales|revenue|net sales/.test(want)) { wanted.add("gmv"); wanted.add("revenue"); }
+  if (/customer|buyer|user|member/.test(want)) wanted.add("customers");
+
   const seen = new Set();
   const out = [];
   for (const r of results || []) {
@@ -212,12 +222,19 @@ export async function goldSources(env, domain) {
     try { host = new URL(r.source_url).host.replace(/^www\./, ""); } catch { continue; }
     if (seen.has(r.source_url)) continue;
     seen.add(r.source_url);
-    // Investor and regulator hosts are where a disclosed figure is actually
-    // published; everything else is somebody reporting on it.
     const primary = /(^|\.)investors?\./.test(host) || /sec\.gov|companieshouse|bundesanzeiger|\.kvk\./.test(host)
-      || /ir\./.test(host) || /about\./.test(host);
-    out.push({ url: r.source_url, host, title: r.source_title || null, field: r.field, primary });
+      || /(^|\.)ir\./.test(host) || /(^|\.)about\./.test(host);
+    out.push({
+      url: r.source_url, host, title: r.source_title || null, field: r.field, primary,
+      // Does this document measure the thing being verified.
+      answers: wanted.has(r.field),
+    });
   }
-  out.sort((a, b) => Number(b.primary) - Number(a.primary));
-  return out.slice(0, 6);
+
+  // Best first: the document that measures the right thing and is a primary
+  // source. Everything else stays available but quiet.
+  out.sort((a, b) =>
+    Number(b.answers) - Number(a.answers) ||
+    Number(b.primary) - Number(a.primary));
+  return out.slice(0, 4);
 }

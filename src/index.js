@@ -53,7 +53,7 @@ const PAGES = {
     const sources = {};
     for (const row of gold.rows) {
       if (row.verified) continue;
-      const found = await goldSources(env, row.domain);
+      const found = await goldSources(env, row.domain, row.disclosed_metric);
       if (found.length) sources[row.domain] = found;
     }
     return { evals, gold, sources, suggest: suggestGold({ goldRows: gold.rows, queueRows: q.rows }) };
@@ -168,7 +168,7 @@ export default {
         return json({ ok: true, ...suggestGold({ goldRows: gold.rows, queueRows: q.rows }) });
       }
       if (p.startsWith("/api/gold/sources/"))
-        return json({ ok: true, sources: await goldSources(env, normaliseDomain(decodeURIComponent(p.slice(18)))) });
+        return json({ ok: true, sources: await goldSources(env, normaliseDomain(decodeURIComponent(p.slice(18))), url.searchParams.get("metric") || "") });
       if (p === "/api/gold/add" && request.method === "POST")
         return written(async () => ({ row: await addGold(env, await request.json().catch(() => ({}))) }));
       if (p.startsWith("/api/gold/") && request.method === "POST") {
