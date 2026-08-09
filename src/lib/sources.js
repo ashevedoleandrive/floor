@@ -139,7 +139,7 @@ export const RAW_SOURCES = [
 const REQUIREMENTS = {
   web_search:      { secret: null,                    adapter: true  },  // included with the model
   sec_edgar:       { secret: null,                    adapter: true  },  // public, no key needed
-  companies_house: { secret: "COMPANIES_HOUSE_KEY",   adapter: false },  // key held, reader not built
+  companies_house: { secret: "COMPANIES_HOUSE_KEY",   adapter: true  },  // reads filed accounts as PDF
   eu_registries:   { secret: null,                    adapter: false },
 };
 

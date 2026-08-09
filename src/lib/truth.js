@@ -34,6 +34,7 @@
 
 import { Model } from "./anthropic.js";
 import { primarySources } from "./edgar.js";
+import { ukPrimarySource, accountsDocument } from "./companies_house.js";
 
 /**
  * Scale words, applied in code.
@@ -97,7 +98,17 @@ const SUSPICIOUS = [
  *                                    unit error. Never used to reject.
  * @returns {{ok:boolean, monthly?:number, reason?:string, flags:string[]}}
  */
-export function reconcileTruth(x, predictedMonthly = null) {
+/**
+ * @param {string|null} periodFromDocument  A period the DOCUMENT establishes,
+ *   independent of the sentence. A set of annual filed accounts covers a year
+ *   by definition of the filing, so a revenue figure lifted from its table is
+ *   annual whether or not the surrounding words say so. This is external
+ *   evidence, not a guess, and using it is recorded as a flag so the reading is
+ *   auditable. It is only ever consulted when the sentence itself is silent; a
+ *   sentence that names a period always wins, and a sentence that contradicts
+ *   the document is still rejected.
+ */
+export function reconcileTruth(x, predictedMonthly = null, periodFromDocument = null) {
   const flags = [];
   const value = Number(x?.value);
   const period = String(x?.period || "").toLowerCase();
@@ -113,14 +124,21 @@ export function reconcileTruth(x, predictedMonthly = null) {
   if (quote.length < 12)
     return { ok: false, reason: "no verbatim sentence, so nothing can be checked", flags };
 
-  // Defence 3: a sentence that names no period cannot establish one.
+  // Defence 3: a sentence that names no period cannot establish one, unless the
+  // document itself does.
   const implied = periodsInText(quote);
-  if (!implied.size)
-    return {
-      ok: false,
-      reason: "the quoted sentence names no period, so the figure cannot be placed in time",
-      flags,
-    };
+  if (!implied.size) {
+    if (periodFromDocument && PER_MONTH[periodFromDocument] && period === periodFromDocument) {
+      flags.push(`the period came from the filing type, not from the quoted sentence`);
+      implied.add(periodFromDocument);
+    } else {
+      return {
+        ok: false,
+        reason: "the quoted sentence names no period, so the figure cannot be placed in time",
+        flags,
+      };
+    }
+  }
 
   // Defence 2: the claimed period must be one the sentence actually supports.
   if (!implied.has(period))
@@ -134,16 +152,30 @@ export function reconcileTruth(x, predictedMonthly = null) {
   // applied. If the quote reads "970 million" the magnitude must be million; a
   // figure reported bare when the document scaled it is off by a factor of a
   // million and would look like a catastrophic prediction miss.
-  const scaleInQuote = quote.match(/([\d][\d,.]*)\s*(hundred|thousand|million|billion|trillion)\b/i);
+  // Financial writing abbreviates: "68m", "1.2bn", "450k". Reading only the
+  // spelled-out words meant a correctly scaled figure got flagged for a scale
+  // the sentence had printed, just shorter. A check that cries wolf trains
+  // people to ignore it.
+  const ABBREV = { k: "thousand", m: "million", bn: "billion", b: "billion", tn: "trillion", t: "trillion" };
+  // Find the figure being validated, not merely the first number in the
+  // sentence. A table row reading "FY24: 68m 57m" carries two, and checking the
+  // wrong one let a dropped scale word through: 68 did not match the reported
+  // 57, so the guard skipped instead of firing.
+  const scaleHits = [...quote.matchAll(/([\d][\d,.]*)\s*(hundred|thousand|million|billion|trillion|bn|tn|[kmbt])\b/gi)];
+  const scaleInQuote = scaleHits.find(
+    (m) => Math.abs(Number(m[1].replace(/,/g, "")) - value) < Math.max(1, value * 0.02)
+  );
   if (scaleInQuote) {
-    const said = scaleInQuote[2].toLowerCase();
-    const near = Math.abs(Number(scaleInQuote[1].replace(/,/g, "")) - value) < Math.max(1, value * 0.02);
-    if (near && said !== mag)
+    const rawWord = scaleInQuote[2].toLowerCase();
+    const said = ABBREV[rawWord] || rawWord;
+    if (said !== mag)
       return {
         ok: false,
-        reason: `the sentence reads "${scaleInQuote[1]} ${said}" but the figure was reported as ${mag || "a bare number"}`,
+        reason: `the sentence reads "${scaleInQuote[1]} ${rawWord}" but the figure was reported as ${mag || "a bare number"}`,
         flags,
       };
+  } else if (scaleHits.length && mag && mag !== "none") {
+    flags.push(`the sentence prints a scale word but not next to the figure that was reported`);
   } else if (mag && mag !== "none") {
     flags.push(`a "${mag}" scale was applied but the quoted sentence does not print that word`);
   }
@@ -359,4 +391,85 @@ Report the figure exactly as printed, with the period the document states. Do no
   }
 
   return { ok: false, stage: "extract", reason: tried.join(" · ") || "no figure found", traces: model.traces };
+}
+
+/**
+ * The same job against a UK filed accounts PDF.
+ *
+ * Companies House publishes accounts as PDF and nothing else, so the document
+ * goes to the model as a document block rather than through a parser. Every
+ * defence downstream is identical: the model transcribes the figure, its scale
+ * word and its period, quotes the sentence, and code does the arithmetic and
+ * the period and scale checks.
+ *
+ * What a UK filing gives is revenue, not order counts, so this establishes the
+ * dollar volume a merchant's size can be derived from rather than a transaction
+ * count directly. That is the honest ceiling of this source and it is stated
+ * rather than papered over.
+ */
+export async function extractTruthUK(env, budget, { domain, name, metric, settings }) {
+  const src = await ukPrimarySource(env, { domain, name });
+  if (!src.ok) return { ok: false, stage: "source", reason: src.reason };
+
+  // Smallest filing that fits, not simply the newest. A large PLC's annual
+  // report can exceed what a model will accept, while an earlier year carries
+  // the same headline figure in fewer pages.
+  let doc = null, chosen = null, why = [];
+  for (const cand of (src.filing.candidates || [src.filing])) {
+    const d = await accountsDocument(env, cand.metadata_url);
+    if (d.ok) { doc = d; chosen = cand; break; }
+    why.push(`${cand.date}: ${d.reason}`);
+  }
+  if (!doc) return { ok: false, stage: "document", reason: why.join(" · "), company: src.company };
+  src.filing = { ...src.filing, ...chosen };
+
+  const model = new Model(env, budget);
+  const r = await model.call({
+    step: "truth",
+    model: settings?.model_extract || env.MODEL_EXTRACT || "claude-sonnet-5",
+    system: TRUTH_SYSTEM,
+    user: [
+      { type: "document", source: { type: "base64", media_type: "application/pdf", data: doc.base64 } },
+      { type: "text", text: `Merchant: ${name || domain}
+Company: ${src.company.title} (${src.company.number}), filed accounts dated ${src.filing.date}${src.filing.made_up_to ? `, made up to ${src.filing.made_up_to}` : ""}
+Metric to find: ${metric || "revenue or turnover for the period"}
+Source URL, cite this exactly: ${src.registry_url}
+
+These are UK filed accounts. Report the headline revenue or turnover figure for the period exactly as printed, with its scale word and the period the accounts cover. Do not convert anything. If the document states an order or transaction count, prefer that and say so in unit.` },
+    ],
+    schema: TRUTH_SCHEMA,
+    effort: "low",
+    maxTokens: 3000,
+  });
+
+  if (!r.ok) return { ok: false, stage: "extract", reason: r.reason, traces: model.traces };
+  const x = r.json || {};
+  if (!x.found)
+    return { ok: false, stage: "extract", reason: "the filed accounts do not state that figure", traces: model.traces };
+
+  // Annual filed accounts cover a year by the definition of the filing, so the
+  // document can establish the period when the sentence does not.
+  const rec = reconcileTruth({ ...x, source_url: src.registry_url }, null, "year");
+  if (!rec.ok) return { ok: false, stage: "reconcile", reason: rec.reason, traces: model.traces };
+
+  return {
+    ok: true,
+    monthly: rec.monthly,
+    raw_value: rec.raw_value,
+    // The EDGAR path returns this and the write needs it; omitting it here made
+    // a successful extraction fail at the insert with a D1 type error, which
+    // reads like the extraction broke when it had already worked.
+    raw_period: rec.period,
+    magnitude: rec.magnitude,
+    unit: x.unit || null,
+    period_label: x.period_label || null,
+    verbatim: rec.quote,
+    source_url: src.registry_url,
+    form: "UK filed accounts",
+    filed: src.filing.date,
+    company_number: src.company.number,
+    flags: rec.flags,
+    traces: model.traces,
+    bytes: doc.bytes,
+  };
 }

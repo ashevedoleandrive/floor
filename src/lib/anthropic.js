@@ -144,6 +144,10 @@ export class Model {
       // Thinking is ON by default on both; max_tokens caps thinking + text
       // together, which is why these budgets are generous for small payloads.
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+      // A string is the common case; an array lets a caller send content blocks,
+      // which is how a PDF reaches the model. UK filed accounts are published
+      // as PDFs and nothing else, so the alternative would be a PDF parser in a
+      // Worker with no build step.
       messages: [{ role: "user", content: user }],
       output_config: { effort },
     };

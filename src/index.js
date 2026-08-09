@@ -9,7 +9,7 @@ import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, c
 import { computeCoverage } from "./lib/coverage.js";
 import { segmentEval, suggestGold, goldSources } from "./lib/accuracy.js";
 import { primarySources } from "./lib/edgar.js";
-import { extractTruth } from "./lib/truth.js";
+import { extractTruth, extractTruthUK } from "./lib/truth.js";
 import { shell as kitShell } from "./ui/kit.js";
 import * as pageAccount  from "./ui/page-account.js";
 import * as pageCoverage from "./ui/page-coverage.js";
@@ -740,7 +740,11 @@ async function establishTruth(env, domain) {
   const acct = await env.DB.prepare("SELECT * FROM accounts WHERE domain=?").bind(domain).first();
   const prior = acct ? await latestAssessment(env, acct.id) : null;
 
-  const r = await extractTruth(env, budget, {
+  // EDGAR first, because a US filing states order counts in prose and Companies
+  // House states revenue in a PDF. Fall through to the UK registry when the
+  // merchant files nowhere near the SEC, which is what ASOS, Zalando and every
+  // private British retailer have in common.
+  let r = await extractTruth(env, budget, {
     domain,
     name: acct?.name || row.name,
     metric: row.disclosed_metric,
@@ -748,6 +752,13 @@ async function establishTruth(env, domain) {
     // Only used to flag a disagreement whose ratio looks like a unit error.
     predictedMonthly: prior?.abstained ? null : prior?.txn_mid ?? null,
   });
+  if (!r.ok && env.COMPANIES_HOUSE_KEY) {
+    const uk = await extractTruthUK(env, budget, {
+      domain, name: acct?.name || row.name, metric: row.disclosed_metric, settings,
+    });
+    if (uk.ok) r = uk;
+    else r = { ...r, reason: `SEC: ${r.reason} · UK: ${uk.reason}` };
+  }
 
   const cost = (r.traces || []).reduce((a, t) => a + (t.cost_usd || 0), 0);
   if (!r.ok) return { ok: false, error: r.stage || "failed", note: r.reason, cost_usd: cost };
