@@ -13,17 +13,28 @@ same file.
 | `public/static/floor.css` | the foundation author only | never edit |
 | `public/static/floor.js` | the foundation author only | never edit |
 | `src/ui/page-*.js` | one author each | never edit another page |
-| `src/lib/i18n.js` | shared, append-only | add your keys at the end of both dicts, never reorder or delete |
+| `src/lib/i18n.js` | the router author only | **do not edit.** Export your copy from your own page module instead, see below |
 | `src/lib/*.js` (db, scoring, pipeline, sources, coverage) | nobody, this rebuild is presentation only | read to understand, do not change |
 
 If your page needs something from `kit.js` that does not exist, do **not** define a
 local copy and do **not** edit the kit. Say so in your report. A second gauge
 implementation is the thing this rebuild exists to remove.
 
-`i18n.js` is the one shared file with concurrent authors. It is a plain object of
-keys, so appending at the end of the `en` and `es` blocks is conflict-free in
-practice. Never touch a key you did not add. Every string a user can read is a key;
-no literal copy in a page module, in either language.
+**Your copy lives in your own file.** Export a `keys` object from your page module
+and the router merges it into the dictionary before rendering:
+
+```js
+export const keys = {
+  "queue.title":  { en: "Work queue", es: "Cola de trabajo" },
+  "queue.empty":  { en: "No accounts yet.", es: "Aun no hay cuentas." },
+};
+```
+
+This exists so several page authors can work at the same time without two of them
+writing to `i18n.js` at once and silently dropping each other's keys. Every string
+a user can read is a key, in both languages, with no literal copy anywhere in a
+page module. Reuse an existing key from `i18n.js` when one already says what you
+mean; only add what is genuinely new to your page.
 
 ## What a page module exports
 

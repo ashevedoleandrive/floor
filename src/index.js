@@ -5,10 +5,11 @@ import {
   latestAssessment, getSignals, getEvidence, getTraces, queueRows, allSignals,
 } from "./lib/db.js";
 import { renderQueue, renderAccount, renderEvals, renderBacklog, renderModel, renderWired, renderSources, shell } from "./lib/views.js";
-import { pickLang, langCookie, t as makeT, LANGS } from "./lib/i18n.js";
+import { pickLang, langCookie, t as makeT, LANGS, COPY } from "./lib/i18n.js";
 import { renderSettings, settingsScript } from "./lib/views-settings.js";
 import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, classifySource, ruleUsage, TIERS } from "./lib/sources.js";
 import { computeCoverage } from "./lib/coverage.js";
+import { shell as kitShell } from "./ui/kit.js";
 import {
   updateAccount, archiveAccount, unarchiveAccount, assessmentHistory,
   deleteAssessment, restoreAssessment, updateGold, addGold, archiveGold,
@@ -22,6 +23,40 @@ const json = (data, status = 200) =>
 
 const html = (body) =>
   new Response(body, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+
+/**
+ * The rebuilt pages, and the data each one needs.
+ *
+ * One entry per migrated surface. The `data` function is the only place a page's
+ * queries live, so a page module never touches D1 and two page authors can never
+ * collide over a shared loader. Adding a page is one line here and one new file.
+ */
+const PAGES = {
+  // "/": { mod: pageQueue, data: (env) => buildQueue(env) },
+};
+
+/** Render a rebuilt page: fetch its data, get the body, wrap it in the shell. */
+async function renderPage(entry, env, ctx) {
+  const { mod, data } = entry;
+  // A page carries its own copy rather than editing the shared dictionary, so
+  // two page authors working at once can never clobber each other's keys.
+  if (mod.keys) Object.assign(COPY, mod.keys);
+  const payload = data ? await data(env, ctx) : null;
+  const q = payload?.mode ? payload : await buildQueue(env);
+  const body = await mod.render(env, payload, ctx);
+  return kitShell({
+    title: ctx.t(mod.meta.titleKey),
+    nav: mod.meta.nav,
+    path: ctx.path,
+    mode: q.mode,
+    budget: q.budget,
+    body,
+    css: mod.css ? mod.css() : "",
+    script: mod.script ? mod.script() : "",
+    lang: ctx.lang,
+    t: ctx.t,
+  });
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -107,6 +142,12 @@ export default {
         }
         return written(async () => updateCard(env, id, await request.json().catch(() => ({}))));
       }
+
+      // Rebuilt pages, served from src/ui/. The migration runs page by page:
+      // anything registered here uses the new foundation, anything absent falls
+      // through to the legacy renderer below and keeps working untouched.
+      const rebuilt = PAGES[p];
+      if (rebuilt) return html(await renderPage(rebuilt, env, { lang, t, path: p }));
 
       if (p === "/")            return html(await renderQueue(env, await buildQueue(env), { lang, t }));
       if (p === "/evals")       return html(await renderEvals(env, await listEvals(env), await listGold(env), { lang, t }));
