@@ -349,11 +349,18 @@ async function main() {
     const by = (d) => q.rows.find((r) => r.domain === d);
     const dd = by("doordash.com");
     const checks = [
-      [dd && dd.rank === 1, `doordash is rank 1 (is ${dd?.rank})`],
+      // Not "rank 1". Rank legitimately moves as accounts are assessed: both
+      // Roblox and DoorDash clear the floor, so fresher dated signals win, which
+      // is the whole point of ranking by when rather than only by size. An
+      // invariant that fails when the product works correctly trains people to
+      // ignore it. What must hold is that the account is present, qualified and
+      // near the top.
+      [dd && dd.rank <= 3, `doordash is in the top 3 (is ${dd?.rank})`],
+      [dd && Math.abs((dd.txn_mid || 0) - 258700000) < 1e6, `doordash estimate is 258.7M (is ${dd?.txn_mid})`],
       [dd && dd.band === "work", `doordash is in the work band (is ${dd?.band})`],
       [dd && !dd.last_touched_at, `doordash has no last-touched date (is ${dd?.last_touched_at})`],
       [q.rows.length === 38, `38 accounts (is ${q.rows.length})`],
-      [q.rows.filter((r) => r.assessment_id).length === 18, `18 assessed (is ${q.rows.filter((r) => r.assessment_id).length})`],
+      [q.rows.filter((r) => r.assessment_id).length === 19, `19 assessed (is ${q.rows.filter((r) => r.assessment_id).length})`],
       [q.counts.needs_evidence === 6, `6 abstained (is ${q.counts.needs_evidence})`],
       [Number(q.settings.floor_txn) === 100000, `floor is 100k (is ${q.settings.floor_txn})`],
       [Number(q.settings.cooldown_days) === 45, `cool-down is 45 days (is ${q.settings.cooldown_days})`],

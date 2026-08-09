@@ -1,4 +1,6 @@
 import { Model } from "./anthropic.js";
+import { primarySources } from "./edgar.js";
+import { relevantWindows } from "./truth.js";
 
 /**
  * Three stages, three different jobs, deliberately not one prompt:
@@ -207,8 +209,59 @@ When you force abstain, set revised_min, revised_mid and revised_max to -1.`;
  * stages so every invocation is short.
  * ======================================================================== */
 
+/**
+ * Passages from the merchant's own filings, when it is an SEC filer.
+ *
+ * This is the difference between searching for commentary about a disclosure
+ * and reading the disclosure. Web search finds a document only if it happens to
+ * be indexed and only if the query happens to match; EDGAR is a direct lookup
+ * against the regulator's own store. Handing the research stage the actual text
+ * means it spends its five searches on timing signals rather than on hunting
+ * for a figure that was addressable all along.
+ *
+ * Returns null for the majority of the world, which is not an error. Most
+ * merchants are not SEC filers, and that is what the coverage map is for.
+ */
+async function edgarBrief(env, { domain, name }) {
+  try {
+    const src = await primarySources(env, { domain, name });
+    if (!src.ok || !src.filings.length) return null;
+
+    for (const filing of src.filings.slice(0, 2)) {
+      const r = await fetch(filing.url, {
+        headers: { "user-agent": "Floor account qualification (bryan@leandrive.io)" },
+        cf: { cacheTtl: 86400, cacheEverything: true },
+      });
+      if (!r.ok) continue;
+      const windows = relevantWindows(await r.text(), "orders transactions volume", { max: 8 });
+      if (!windows.length) continue;
+      return {
+        url: filing.url,
+        form: filing.form,
+        filed: filing.filed,
+        cik: src.cik,
+        text: windows.join("\n\n"),
+      };
+    }
+  } catch { /* a source that fails is a coverage fact, never a broken run */ }
+  return null;
+}
+
 export async function stageResearch({ env, budget, domain, account, settings }) {
   const model = new Model(env, budget);
+
+  // Primary first. If the regulator has it, start there rather than searching.
+  const edgar = await edgarBrief(env, { domain, name: account?.name });
+  const primaryBlock = edgar ? `
+
+=== PRIMARY FILING, RETRIEVED DIRECTLY FROM SEC EDGAR ===
+${edgar.form} filed ${edgar.filed}
+Source URL, cite this exactly: ${edgar.url}
+
+${edgar.text}
+
+Treat the passages above as the strongest evidence available. They came from the regulator's own filing store, not from a search. If they state the volume figure, use them and cite that URL, and spend your searches on dated events instead.` : "";
+
   const r = await model.call({
     step: "research",
     model: settings.model_research || env.MODEL_RESEARCH || "claude-sonnet-5",
@@ -217,7 +270,7 @@ export async function stageResearch({ env, budget, domain, account, settings }) 
 
 Find this merchant's disclosed payment or order volume, then its payments footprint, geography and recent dated events.
 
-Start by going directly at the primary disclosure: search the company name with the document type and the metric. If the company is listed, its filings are the answer and general web search usually is not. If no disclosed scale figure exists, say so plainly rather than substituting an impression of size.`,
+Start by going directly at the primary disclosure: search the company name with the document type and the metric. If the company is listed, its filings are the answer and general web search usually is not. If no disclosed scale figure exists, say so plainly rather than substituting an impression of size.${primaryBlock}`,
     // Dynamic-filtering web search. Do NOT also declare code_execution here —
     // the _20260209 variant runs it internally and a second execution
     // environment confuses the model. max_uses is kept tight because research
@@ -228,7 +281,7 @@ Start by going directly at the primary disclosure: search the company name with 
     maxTokens: 8000,
   });
 
-  if (!r.ok) return { ok: false, reason: r.reason, detail: r.detail, traces: model.traces };
+  if (!r.ok) return { ok: false, reason: r.reason, detail: r.detail, traces: model.traces, edgar };
 
   // Hard stop when search produced nothing usable.
   //

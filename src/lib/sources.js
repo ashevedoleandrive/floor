@@ -7,7 +7,7 @@
  *
  * This file makes that concrete rather than rhetorical: it lists every source
  * worth wiring, what it would unlock, and how well it covers each of Yuno's
- * regions. Exactly one is connected today. The rest are the investment case,
+ * regions. Two are connected today. The rest are the investment case,
  * and they are visible instead of promised.
  *
  * Coverage ratings are deliberate and conservative:
@@ -37,13 +37,13 @@ export const SOURCES = [
   },
   {
     id: "sec_edgar",
-    name: "SEC EDGAR structured filings",
+    name: "SEC EDGAR filings",
     kind: "volume",
-    status: "available",
+    status: "connected",
     cost: "free",
-    what: "US regulator's machine-readable filing data. Exact figures tied to a specific filing, no searching and no interpretation.",
-    unlocks: "Removes the search step entirely for US-listed merchants. Highest-confidence volume evidence available at any price.",
-    limits: "US filers only. Says nothing about private companies.",
+    what: "The US regulator's own filing store. Floor resolves a merchant to its CIK, fetches the newest 10-Q, 10-K or 8-K, and reads the filing directly instead of searching for commentary about it.",
+    unlocks: "Primary evidence for US filers without spending a search to find it, and a second source that is genuinely independent of web search, which is what makes the accuracy page able to grade the tool at all.",
+    limits: "US filers only, so it says nothing about private companies or foreign listings. Order and transaction counts are not in XBRL, checked rather than assumed, so the figures still sit in prose and have to be read.",
     coverage: { NORTHAMERICA: "strong", EUROPE: "none", APAC: "none", LATAM: "none", AMEA: "none" },
   },
   {
@@ -164,7 +164,7 @@ export function sourceSummary() {
     free_and_unwired: SOURCES.filter((s) => s.status === "available" && s.cost === "free").length,
     coverage_now: coverageByRegion(true),
     coverage_wired: coverageByRegion(false),
-    note: "One source is connected. The rest are the upgrade path, and the trust layer above them does not change when they are added.",
+    note: "Two sources are connected: open web search, and the SEC's own filing store. The rest are the upgrade path, and the trust layer above them does not change when they are added.",
   };
 }
 
