@@ -9,7 +9,7 @@
    { areas[5], byArea{...}, total, live }. listBacklog() in src/index.js
    does not exclude archived rows from that total/live count, so this
    page computes its own visible total/live by filtering archived_at
-   itself rather than trusting the server's aggregate fields — see the
+   itself rather than trusting the server's aggregate fields, see the
    comment at computeCounts() below.
 
    Completeness gaps closed here (previously true of the legacy page):

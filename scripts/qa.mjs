@@ -314,6 +314,35 @@ async function main() {
     else ok(`gauge accommodates the largest account (${top.toLocaleString()} txn/mo)`);
   } catch (e) { warn(`gauge ceiling check failed: ${e.message}`); }
 
+  console.log("\nDemo invariants");
+  // Added 2026-08-09 after a verification run left DoorDash stamped with a
+  // last-touched date of today. Nothing errored. The tool was correct: a touched
+  // account IS suppressed. But the single most impressive number in the dataset,
+  // 258.7M txn/mo, silently dropped to rank 17 and read as suppressed, and the
+  // agent that did it reported production left exactly as found.
+  //
+  // So this asserts the handful of facts the demo actually stands on. If a test
+  // or a stray click moves them, this says so out loud rather than leaving it to
+  // be discovered on a shared screen.
+  try {
+    const q = JSON.parse((await get("/api/queue")).body);
+    const by = (d) => q.rows.find((r) => r.domain === d);
+    const dd = by("doordash.com");
+    const checks = [
+      [dd && dd.rank === 1, `doordash is rank 1 (is ${dd?.rank})`],
+      [dd && dd.band === "work", `doordash is in the work band (is ${dd?.band})`],
+      [dd && !dd.last_touched_at, `doordash has no last-touched date (is ${dd?.last_touched_at})`],
+      [q.rows.length === 38, `38 accounts (is ${q.rows.length})`],
+      [q.rows.filter((r) => r.assessment_id).length === 18, `18 assessed (is ${q.rows.filter((r) => r.assessment_id).length})`],
+      [q.counts.needs_evidence === 6, `6 abstained (is ${q.counts.needs_evidence})`],
+      [Number(q.settings.floor_txn) === 100000, `floor is 100k (is ${q.settings.floor_txn})`],
+      [Number(q.settings.cooldown_days) === 45, `cool-down is 45 days (is ${q.settings.cooldown_days})`],
+    ];
+    for (const [pass, label] of checks) pass ? ok(label) : bad(`demo invariant broken: ${label}`);
+    const gold = JSON.parse((await get("/api/gold")).body);
+    gold.total === 22 ? ok(`gold set has 22 candidates`) : bad(`gold set has ${gold.total}, expected 22`);
+  } catch (e) { warn(`demo invariants could not be checked: ${e.message}`); }
+
   console.log(`\n${"=".repeat(60)}`);
   console.log(`${results.pass} passed · ${results.fail} failed · ${results.warn} warnings`);
   if (results.fail) {
