@@ -238,7 +238,7 @@ export function css() {
      repeated column headers collapse to zero height everywhere but the
      first visible band — kept in the tree so each table stays labelled
      for assistive tech and keeps its width source of truth. */
-  .p-queue .q-band .tbl { table-layout: fixed; }
+  .p-queue .q-band .tbl { table-layout: fixed; min-width: 1020px; }
   .p-queue .q-band:not(.q-first) thead th { padding: 0; border-bottom: 0; font-size: 0; line-height: 0; height: 0; overflow: hidden; }
   .p-queue .q-band:not(.q-first) thead input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
   .p-queue .q-band tbody tr[data-id] { cursor: pointer; }

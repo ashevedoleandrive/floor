@@ -50,7 +50,7 @@ const REQUIRED = {
     "#add-dlg", "#add-text", "#add-go", "#cooldown",
     "[data-f]", "tr.r", "a[href='/api/export.csv']",
   ],
-  "/backlog": ["#card-dlg", "#c-area", "#c-title", "#c-gap", "#c-metric", "#c-owner", "#c-status", "#c-save"],
+  "/backlog": ["#card-add", "#card-edit", "#bl-add-open", "#bl-arch-toggle", "#bl-header-count", "#c-area", "#c-status"],
   // Rebuilt pages bind different elements than the ones they replaced. Leaving
   // the old ids here would fail forever on a page that is working correctly,
   // and a check that cries wolf gets ignored, which is worse than no check.

@@ -214,7 +214,7 @@ function ruleDialogBody(t) {
     ] })}
     ${field({ id: "rd-label", label: t("rules.fldLabel"), placeholder: t("rules.phLabel") })}
     ${field({ id: "rd-weight", label: t("rules.weight"), type: "number", value: "0.8", step: "0.05", min: "0", max: "1", hint: t("rules.weightHint"), mono: true })}
-    ${field({ id: "rd-position", label: t("rules.order"), type: "number", value: "500", step: "10", min: "1", hint: t("rules.dlgHint"), mono: true })}
+    ${field({ id: "rd-position", label: t("rules.order"), type: "number", value: "500", step: "1", min: "1", hint: t("rules.dlgHint"), mono: true })}
     ${field({ id: "rd-note", label: t("rules.fldNote"), placeholder: t("rules.phNote") })}
   `;
 }

@@ -17,6 +17,7 @@ import * as pageModel    from "./ui/page-model.js";
 import * as pageSettings from "./ui/page-settings.js";
 import * as pageSources  from "./ui/page-sources.js";
 import * as pageWired    from "./ui/page-wired.js";
+import * as pageBacklog  from "./ui/page-backlog.js";
 import {
   updateAccount, archiveAccount, unarchiveAccount, assessmentHistory,
   deleteAssessment, restoreAssessment, updateGold, addGold, archiveGold,
@@ -45,6 +46,7 @@ const PAGES = {
   "/evals":    { mod: pageEvals,    data: async (env) => ({ evals: await listEvals(env), gold: await listGold(env) }) },
   "/model":    { mod: pageModel,    data: (env) => buildQueue(env) },
   "/wired":    { mod: pageWired,    data: (env) => buildQueue(env) },
+  "/backlog":  { mod: pageBacklog,  data: (env) => listBacklog(env, { includeArchived: true }) },
 };
 
 /** Settings needs its own payload: the settings themselves plus the cost context
@@ -655,13 +657,25 @@ async function saveRule(env, request) {
   return { ok: true, ...(await listRules(env)) };
 }
 
-async function listBacklog(env) {
-  const { results } = await env.DB.prepare("SELECT * FROM backlog ORDER BY area, id DESC").all();
+async function listBacklog(env, { includeArchived = false } = {}) {
+  // Archived cards were counted in total and live, so archiving a card changed
+  // nothing the operator could see and the header sentence quietly lied. The
+  // page had to recompute its own counts to work around it, which is the tell
+  // that the fix belonged here. Found by the backlog page author.
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM backlog ORDER BY area, id DESC"
+  ).all();
+  const all = results || [];
+  const rows = includeArchived ? all : all.filter((c) => !c.archived_at);
   const areas = ["SDR", "Marketing", "Learning Ops", "Key Account Mgmt", "Other"];
   const byArea = Object.fromEntries(areas.map((a) => [a, []]));
-  for (const c of results || []) (byArea[c.area] || byArea.Other).push(c);
-  const live = (results || []).filter((c) => c.status === "live").length;
-  return { areas, byArea, total: (results || []).length, live };
+  for (const c of rows) (byArea[c.area] || byArea.Other).push(c);
+  return {
+    areas, byArea,
+    total: rows.length,
+    live: rows.filter((c) => c.status === "live").length,
+    archived: all.filter((c) => c.archived_at),
+  };
 }
 
 async function addCard(env, request) {
@@ -674,9 +688,21 @@ async function addCard(env, request) {
 }
 
 async function listGold(env) {
-  const { results } = await env.DB.prepare("SELECT * FROM gold_set ORDER BY verified DESC, domain").all();
-  const verified = (results || []).filter((g) => g.verified).length;
-  return { rows: results || [], total: (results || []).length, verified };
+  // Archived candidates were counted in total forever, with no hard delete to
+  // undo an accidental add, so the denominator of the accuracy claim could only
+  // ever grow. Same defect as listBacklog, found independently by the accuracy
+  // page author. The denominator of a trust argument has to be correctable.
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM gold_set ORDER BY verified DESC, domain"
+  ).all();
+  const all = results || [];
+  const rows = all.filter((g) => !g.archived_at);
+  return {
+    rows,
+    total: rows.length,
+    verified: rows.filter((g) => g.verified).length,
+    archived: all.filter((g) => g.archived_at).length,
+  };
 }
 
 async function saveGold(env, request) {
