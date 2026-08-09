@@ -45,6 +45,25 @@ import {
    gaps (add / edit / un-verify / archive / restore) and their copy. */
 
 export const keys = {
+  "evals.nextLabel": { en: "What to check next", es: "Qué verificar ahora" },
+  "evals.nextTitle": {
+    en: "Three that would tell you something new",
+    es: "Tres que dirían algo que aún no sabes",
+  },
+  "evals.nextSub": {
+    en: "only merchants Floor has already assessed, and only where checking one covers a dimension the verified set is blind to",
+    es: "solo comercios que Floor ya analizó, y solo cuando verificar uno cubre una dimensión que el conjunto verificado no alcanza",
+  },
+  "evals.floorSays": { en: "Floor says {n}/mo", es: "Floor estima {n}/mes" },
+  "evals.saturated": {
+    en: "Nothing left to check would tell you something new. Every region, reliability class and size band the gold set can reach is already covered.",
+    es: "Verificar algo más no diría nada nuevo. Cada región, clase de fiabilidad y rango de tamaño que el conjunto puede alcanzar ya está cubierto.",
+  },
+  "evals.blindRegions": {
+    en: "No candidate can measure {r}. That gap is in the data, not in the effort: nothing assessed there discloses a public figure to check against.",
+    es: "Ningún candidato puede medir {r}. Esa brecha está en los datos, no en el esfuerzo: nada analizado allí publica una cifra comprobable.",
+  },
+
   "evals.status":       { en: "Status",   es: "Estado" },
   "evals.verified":      { en: "Verified",     es: "Verificada" },
   "evals.unverified":    { en: "Unverified",   es: "Sin verificar" },
@@ -134,10 +153,32 @@ const statusCellHtml = (g, t, assessed) => {
   return m + notAssessed;
 };
 
-const sourceCellHtml = (g) =>
-  g.source_url ? `<a class="mono" href="${esc(g.source_url)}" target="_blank" rel="noopener">${esc(host(g.source_url))} &#8599;</a>`
-    : g.source_note ? `<span class="ink-3">${esc(g.source_note)}</span>`
-    : `<span class="ink-4">&ndash;</span>`;
+/**
+ * The source cell.
+ *
+ * Once verified, this is the URL the human actually read. Before that it offers
+ * the disclosures Floor already found while assessing the merchant, so
+ * verifying means opening a filing rather than hunting for one.
+ *
+ * The line that keeps this honest: handing over the link is navigation, filling
+ * in the figure would be the verification itself. So links are offered and the
+ * number never is.
+ */
+const sourceCellHtml = (g, t, found) => {
+  if (g.source_url) {
+    return `<a class="mono" href="${esc(g.source_url)}" target="_blank" rel="noopener">${esc(host(g.source_url))} &#8599;</a>`;
+  }
+  const links = (found || []).slice(0, 3).map((s) =>
+    `<a class="ev-src${s.primary ? " is-primary" : ""}" href="${esc(s.url)}" target="_blank" rel="noopener"
+        title="${esc(s.title || s.url)}">${esc(s.host)} &#8599;</a>`).join("");
+  if (!links) {
+    return g.source_note
+      ? `<span class="ink-3">${esc(g.source_note)}</span>`
+      : `<span class="ink-4">&ndash;</span>`;
+  }
+  return `<div class="ev-srcs">${links}</div>` +
+    (g.source_note ? `<div class="ev-sub ink-3">${esc(g.source_note)}</div>` : "");
+};
 
 const actionCellHtml = (g, t) =>
   (!g.verified && !g.archived_at)
@@ -203,6 +244,11 @@ export async function render(env, data, ctx) {
   const items = evalsRaw.items || [];
   const rows = goldRaw.rows || [];
 
+  // Disclosures Floor already found, keyed by domain, so an unverified row can
+  // link straight to the filing instead of sending someone to a search engine.
+  const sources = data?.sources || {};
+  const suggest = data?.suggest || null;
+
   const activeRows = rows.filter((g) => !g.archived_at);
   const archivedRows = rows.filter((g) => g.archived_at);
   const totalActive = activeRows.length;
@@ -267,7 +313,7 @@ export async function render(env, data, ctx) {
         metricCellHtml(g),
         monthlyCellHtml(g),
         statusCellHtml(g, t, assessed),
-        sourceCellHtml(g),
+        sourceCellHtml(g, t, sources[g.domain]),
         actionCellHtml(g, t),
       ],
       menu: goldMenuItems(g, t),
@@ -334,6 +380,43 @@ export async function render(env, data, ctx) {
     lang,
   }).replace(/</g, "\\u003c");
 
+  /* What to verify next.
+   *
+   * Deliberately absent when nothing would add information. Verification is
+   * human work, so a suggester that always has something to suggest
+   * manufactures chores. A candidate appears only when checking it would cover
+   * a dimension the verified set is blind to, and only when the tool already
+   * has a prediction to grade it against. */
+  const nextSection = (() => {
+    if (!suggest) return "";
+    const { suggestions = [], saturated, blind = [] } = suggest;
+    const blindLine = blind.length
+      ? `<p class="ev-blind">${esc(t("evals.blindRegions", { r: blind.join(", ") }))}</p>` : "";
+
+    if (saturated) {
+      return section({
+        label: t("evals.nextLabel"),
+        title: t("evals.nextTitle"),
+        body: `<p class="ev-sat">${esc(t("evals.saturated"))}</p>${blindLine}`,
+      });
+    }
+    const list = suggestions.map((c) => `
+      <div class="ev-next-row">
+        <div>
+          <div><span class="nm">${esc(c.name)}</span><span class="dom">${esc(c.domain)}</span></div>
+          <div class="ev-next-gain">${c.gains.map((g) => `<b>${esc(g)}</b>`).join(" &middot; ")}</div>
+        </div>
+        <div class="ev-next-pred">${esc(t("evals.floorSays", { n: count(c.predicted) }))}</div>
+      </div>`).join("");
+
+    return section({
+      label: t("evals.nextLabel"),
+      title: t("evals.nextTitle"),
+      sub: t("evals.nextSub"),
+      body: `<div class="ev-next-list">${list}</div>${blindLine}`,
+    });
+  })();
+
   return `
     <div class="whead">
       <div class="whead-t">
@@ -343,6 +426,7 @@ export async function render(env, data, ctx) {
     </div>
     <div class="ev-meter" id="ev-meter">${meter}</div>
     ${evalSection}
+    ${nextSection}
     ${goldSection}
     ${verifyDlg}
     ${editDlg}
@@ -382,6 +466,32 @@ async function assessedDomains(env, domains) {
 export function css() {
   return `
   .p-evals .ev-meter { margin-top: 32px; }
+
+  /* Disclosures Floor already found, offered as starting points. Primary
+     filings carry ink; anything reporting on a filing stays quiet. */
+  .p-evals .ev-srcs { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .p-evals .ev-src {
+    font: 500 12px/1.5 var(--mono); color: var(--ink-3);
+    text-decoration: none; white-space: nowrap;
+  }
+  .p-evals .ev-src:hover { color: var(--ink-1); text-decoration: underline; }
+  .p-evals .ev-src.is-primary { color: var(--ink-2); }
+
+  /* What to check next. Absent entirely when nothing would add information,
+     because a panel that always has work in it is a chore generator. */
+  .p-evals .ev-next { margin: 28px 0 8px; }
+  .p-evals .ev-next-list { display: grid; gap: 1px; background: var(--line-1); border-block: 1px solid var(--line-1); }
+  .p-evals .ev-next-row {
+    background: var(--bg); padding: 14px 0;
+    display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 16px;
+  }
+  .p-evals .ev-next-row .nm { font-weight: 560; }
+  .p-evals .ev-next-row .dom { font: 500 12px/1.5 var(--mono); color: var(--ink-3); margin-left: 8px; }
+  .p-evals .ev-next-gain { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
+  .p-evals .ev-next-gain b { font-weight: 560; color: var(--ink-1); }
+  .p-evals .ev-next-pred { font: 500 13px/1.5 var(--mono); color: var(--ink-3); white-space: nowrap; }
+  .p-evals .ev-blind { font-size: 13px; color: var(--ink-3); margin-top: 12px; }
+  .p-evals .ev-sat { font-size: 14px; color: var(--ink-2); }
   .p-evals .ev-dom { font-size: 12px; margin-top: 2px; }
   .p-evals .ev-sub { font-size: 12px; line-height: 1.4; margin-top: 4px; }
   .p-evals .ev-sub a { color: var(--ink-3); }

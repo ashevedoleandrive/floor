@@ -81,12 +81,16 @@ export async function saveAssessment(env, accountId, result) {
   const res = await env.DB.prepare(
     `INSERT INTO assessments
       (account_id, status, txn_min, txn_mid, txn_max, confidence, floor_verdict,
-       abstained, abstain_reason, method, cost_usd, latency_ms)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+       abstained, abstain_reason, method, cost_usd, latency_ms, derivation)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     accountId, a.status, a.txn_min ?? null, a.txn_mid ?? null, a.txn_max ?? null,
     a.confidence ?? null, null, a.abstained ?? 0, a.abstain_reason ?? null,
-    a.method ?? null, a.cost_usd ?? 0, a.latency_ms ?? 0
+    a.method ?? null, a.cost_usd ?? 0, a.latency_ms ?? 0,
+    // Kept because a figure read off a disclosure and a figure derived from
+    // dollar volume through an assumed order-value band are different
+    // reliability classes, and averaging their accuracy hides that.
+    a.abstained ? null : (a.derivation || null)
   ).run();
   const assessmentId = res.meta.last_row_id;
 

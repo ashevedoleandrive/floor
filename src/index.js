@@ -7,6 +7,7 @@ import {
 import { pickLang, langCookie, t as makeT, LANGS, COPY } from "./lib/i18n.js";
 import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, classifySource, ruleUsage, TIERS } from "./lib/sources.js";
 import { computeCoverage } from "./lib/coverage.js";
+import { segmentEval, suggestGold, goldSources } from "./lib/accuracy.js";
 import { shell as kitShell } from "./ui/kit.js";
 import * as pageAccount  from "./ui/page-account.js";
 import * as pageCoverage from "./ui/page-coverage.js";
@@ -43,7 +44,20 @@ const PAGES = {
   "/coverage": { mod: pageCoverage, data: (env) => computeCoverage(env) },
   "/settings": { mod: pageSettings, data: (env) => settingsData(env) },
   "/sources":  { mod: pageSources,  data: () => sourceSummary() },
-  "/evals":    { mod: pageEvals,    data: async (env) => ({ evals: await listEvals(env), gold: await listGold(env) }) },
+  "/evals":    { mod: pageEvals,    data: async (env) => {
+    const [evals, gold, q] = [await listEvals(env), await listGold(env), await buildQueue(env)];
+    // Every unverified row carries the links Floor already found, so verifying
+    // is reading a filing rather than hunting for one. Links only, never the
+    // figure: handing over the source is navigation, filling in the number
+    // would be the verification itself.
+    const sources = {};
+    for (const row of gold.rows) {
+      if (row.verified) continue;
+      const found = await goldSources(env, row.domain);
+      if (found.length) sources[row.domain] = found;
+    }
+    return { evals, gold, sources, suggest: suggestGold({ goldRows: gold.rows, queueRows: q.rows }) };
+  } },
   "/model":    { mod: pageModel,    data: (env) => buildQueue(env) },
   "/wired":    { mod: pageWired,    data: (env) => buildQueue(env) },
   "/backlog":  { mod: pageBacklog,  data: (env) => listBacklog(env, { includeArchived: true }) },
@@ -149,6 +163,12 @@ export default {
         if (action === "restore") return written(() => restoreAssessment(env, id).then((assessment) => ({ assessment })));
         return written(() => deleteAssessment(env, id));
       }
+      if (p === "/api/gold/suggest") {
+        const [gold, q] = [await listGold(env), await buildQueue(env)];
+        return json({ ok: true, ...suggestGold({ goldRows: gold.rows, queueRows: q.rows }) });
+      }
+      if (p.startsWith("/api/gold/sources/"))
+        return json({ ok: true, sources: await goldSources(env, normaliseDomain(decodeURIComponent(p.slice(18)))) });
       if (p === "/api/gold/add" && request.method === "POST")
         return written(async () => ({ row: await addGold(env, await request.json().catch(() => ({}))) }));
       if (p.startsWith("/api/gold/") && request.method === "POST") {
@@ -728,6 +748,11 @@ async function runEval(env) {
       in_band: inBand ? 1 : 0, order_correct: orderOk ? 1 : 0,
       floor_correct: floorOk ? 1 : 0, abstained: abstained ? 1 : 0,
       source_url: g.source_url,
+      // Carried so accuracy can be reported per reliability class and per
+      // region rather than as one blended percentage nobody can act on.
+      region: acct?.region || null,
+      derivation: a.derivation || null,
+      confidence: a.confidence ?? null,
     });
   }
   if (!items.length) return { ok: false, error: "no_assessments", note: "Assess the verified gold-set accounts first." };
@@ -746,18 +771,19 @@ async function runEval(env) {
   ).bind(row.n, row.n_scored, row.in_band, row.order_correct, row.abstained, row.floor_correct).run();
   const evalId = res.meta.last_row_id;
   await env.DB.batch(items.map((i) => env.DB.prepare(
-    `INSERT INTO eval_items(eval_id, domain, truth, pred_min, pred_mid, pred_max, in_band, order_correct, floor_correct, abstained, source_url)
-     VALUES(?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(evalId, i.domain, i.truth, i.pred_min, i.pred_mid, i.pred_max, i.in_band, i.order_correct, i.floor_correct, i.abstained, i.source_url)));
+    `INSERT INTO eval_items(eval_id, domain, truth, pred_min, pred_mid, pred_max, in_band, order_correct, floor_correct, abstained, source_url, region, derivation, confidence)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(evalId, i.domain, i.truth, i.pred_min, i.pred_mid, i.pred_max, i.in_band, i.order_correct, i.floor_correct, i.abstained, i.source_url, i.region, i.derivation, i.confidence)));
 
-  return { ok: true, eval_id: evalId, ...row, items };
+  return { ok: true, eval_id: evalId, ...row, items, segments: segmentEval(items) };
 }
 
 async function listEvals(env) {
   const latest = await env.DB.prepare("SELECT * FROM evals ORDER BY id DESC LIMIT 1").first();
   if (!latest) return { latest: null, items: [] };
   const { results } = await env.DB.prepare("SELECT * FROM eval_items WHERE eval_id=? ORDER BY domain").bind(latest.id).all();
-  return { latest, items: results || [] };
+  const items = results || [];
+  return { latest, items, segments: segmentEval(items) };
 }
 
 async function saveSettings(env, request) {

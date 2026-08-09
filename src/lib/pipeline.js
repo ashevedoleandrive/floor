@@ -407,6 +407,11 @@ export function finalise({ extractJson, criticJson, allTraces, startedAt }) {
       abstained: abstained ? 1 : 0,
       abstain_reason: abstained ? reasons.join("; ") : null,
       method: est.method || null,
+      // Carried through so accuracy can be reported per reliability class. A
+      // count read off a filing and a count derived from dollar volume through
+      // an assumed order-value band are not the same kind of number, and one
+      // blended percentage hides which of the two is actually failing.
+      derivation: abstained ? null : (est.derivation || null),
       cost_usd: cost,
       latency_ms: startedAt ? Date.now() - startedAt : 0,
     },
