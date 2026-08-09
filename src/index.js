@@ -8,6 +8,7 @@ import { pickLang, langCookie, t as makeT, LANGS, COPY } from "./lib/i18n.js";
 import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, classifySource, ruleUsage, TIERS } from "./lib/sources.js";
 import { computeCoverage } from "./lib/coverage.js";
 import { segmentEval, suggestGold, goldSources } from "./lib/accuracy.js";
+import { primarySources } from "./lib/edgar.js";
 import { shell as kitShell } from "./ui/kit.js";
 import * as pageAccount  from "./ui/page-account.js";
 import * as pageCoverage from "./ui/page-coverage.js";
@@ -163,6 +164,11 @@ export default {
         const id = Number(idStr);
         if (action === "restore") return written(() => restoreAssessment(env, id).then((assessment) => ({ assessment })));
         return written(() => deleteAssessment(env, id));
+      }
+      if (p.startsWith("/api/edgar/")) {
+        const d = normaliseDomain(decodeURIComponent(p.slice(11)));
+        const acct = await env.DB.prepare("SELECT name FROM accounts WHERE domain=?").bind(d).first();
+        return json(await primarySources(env, { domain: d, name: acct?.name }));
       }
       if (p === "/api/gold/suggest") {
         const [gold, q] = [await listGold(env), await buildQueue(env)];
