@@ -9,6 +9,7 @@ import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, c
 import { computeCoverage } from "./lib/coverage.js";
 import { segmentEval, suggestGold, goldSources } from "./lib/accuracy.js";
 import { primarySources } from "./lib/edgar.js";
+import { extractTruth } from "./lib/truth.js";
 import { shell as kitShell } from "./ui/kit.js";
 import * as pageAccount  from "./ui/page-account.js";
 import * as pageCoverage from "./ui/page-coverage.js";
@@ -170,6 +171,8 @@ export default {
         const acct = await env.DB.prepare("SELECT name FROM accounts WHERE domain=?").bind(d).first();
         return json(await primarySources(env, { domain: d, name: acct?.name }));
       }
+      if (p.startsWith("/api/truth/") && request.method === "POST")
+        return json(await establishTruth(env, normaliseDomain(decodeURIComponent(p.slice(11)))));
       if (p === "/api/gold/suggest") {
         const [gold, q] = [await listGold(env), await buildQueue(env)];
         return json({ ok: true, ...suggestGold({ goldRows: gold.rows, queueRows: q.rows }) });
@@ -686,6 +689,58 @@ async function addCard(env, request) {
     "INSERT INTO backlog(area, title, owner, status, gap, metric, link) VALUES(?,?,?,?,?,?,?)"
   ).bind(b.area || "Other", b.title, b.owner || null, b.status || "idea", b.gap || null, b.metric || null, b.link || null).run();
   return { ok: true, ...(await listBacklog(env)) };
+}
+
+
+/**
+ * Establish ground truth for one gold-set row from its own filings.
+ *
+ * Writes the figure, the sentence it came from, the period as printed and the
+ * conversion, so the accuracy claim can be audited by reading rather than
+ * trusted. Provenance is recorded as `extraction` rather than `human`, because
+ * the two are different kinds of evidence and the page should say which it has.
+ */
+async function establishTruth(env, domain) {
+  const row = await env.DB.prepare("SELECT * FROM gold_set WHERE domain=?").bind(domain).first();
+  if (!row) return { ok: false, error: "not_a_candidate", note: `${domain} is not in the gold set.` };
+  if (row.established_by === "human")
+    return { ok: false, error: "human_established", note: "A person already established this figure. Un-verify it first if it needs replacing." };
+
+  const settings = await getSettings(env);
+  const budget = await makeBudget(env);
+  if (!budget.live()) return { ok: false, error: "budget", note: "Daily spend cap reached." };
+
+  const acct = await env.DB.prepare("SELECT * FROM accounts WHERE domain=?").bind(domain).first();
+  const prior = acct ? await latestAssessment(env, acct.id) : null;
+
+  const r = await extractTruth(env, budget, {
+    domain,
+    name: acct?.name || row.name,
+    metric: row.disclosed_metric,
+    settings,
+    // Only used to flag a disagreement whose ratio looks like a unit error.
+    predictedMonthly: prior?.abstained ? null : prior?.txn_mid ?? null,
+  });
+
+  const cost = (r.traces || []).reduce((a, t) => a + (t.cost_usd || 0), 0);
+  if (!r.ok) return { ok: false, error: r.stage || "failed", note: r.reason, cost_usd: cost };
+
+  await env.DB.prepare(
+    `UPDATE gold_set SET disclosed_value=?, source_url=?, period=?, verbatim=?,
+       raw_value=?, raw_period=?, established_by='extraction', established_at=datetime('now'),
+       truth_flags=?, verified=1, verified_at=datetime('now')
+     WHERE domain=?`
+  ).bind(
+    r.monthly, r.source_url, r.period_label || r.raw_period, r.verbatim,
+    r.raw_value, r.raw_period, (r.flags || []).join(" · ") || null, domain
+  ).run();
+
+  return {
+    ok: true, domain, monthly: r.monthly,
+    raw_value: r.raw_value, raw_period: r.raw_period,
+    verbatim: r.verbatim, source_url: r.source_url,
+    form: r.form, filed: r.filed, flags: r.flags, cost_usd: cost,
+  };
 }
 
 async function listGold(env) {

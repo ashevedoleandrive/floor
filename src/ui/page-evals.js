@@ -45,6 +45,15 @@ import {
    gaps (add / edit / un-verify / archive / restore) and their copy. */
 
 export const keys = {
+  "evals.establishing": { en: "Reading filings\u2026", es: "Leyendo informes\u2026" },
+  "evals.establishOk": { en: "{d} established at {n} per month", es: "{d} establecido en {n} por mes" },
+  "evals.establishFail": { en: "No figure found: {n}", es: "No se encontró la cifra: {n}" },
+
+  "evals.byExtraction": { en: "Extracted from the filing", es: "Extraído del informe" },
+  "evals.byHuman": { en: "Read by a person", es: "Leído por una persona" },
+  "evals.perMonth": { en: "month", es: "mes" },
+  "evals.establish": { en: "Establish from filings", es: "Establecer desde informes" },
+
   "evals.pendingUnconf": {
     en: "Their expected metrics are unconfirmed: they were seeded from prior knowledge and nothing here has opened a filing to check them.",
     es: "Sus métricas esperadas no están confirmadas: se sembraron desde conocimiento previo y nada aquí ha abierto un informe para comprobarlas.",
@@ -192,6 +201,30 @@ const metricCellHtml = (g) => {
 const monthlyCellHtml = (g) =>
   g.disclosed_value != null ? `<span class="mono">${esc(count(g.disclosed_value))}</span>` : `<span class="ink-4">&ndash;</span>`;
 
+/**
+ * How the figure was established, and the working behind it.
+ *
+ * An extracted figure shows the sentence it came from and the arithmetic that
+ * turned it into a monthly rate, because that is what makes it checkable by
+ * someone who does not trust the tool. A human-established figure needs no
+ * working shown: a person opened the document.
+ */
+const provenanceHtml = (g, t) => {
+  if (!g.verified) return "";
+  const how = g.established_by === "extraction"
+    ? mark("half", t("evals.byExtraction"), { tone: "mute" })
+    : mark("filled", t("evals.byHuman"), { tone: "ok" });
+  const sum = (g.raw_value && g.raw_period)
+    ? `<div class="ev-arith">${esc(num(g.raw_value))} ${esc(g.raw_period)}${
+        g.period ? ` <span class="ink-3">(${esc(g.period)})</span>` : ""
+      } &rarr; ${esc(count(g.disclosed_value))} / ${esc(t("evals.perMonth"))}</div>` : "";
+  const quote = g.verbatim
+    ? `<blockquote class="ev-quote">${esc(g.verbatim)}</blockquote>` : "";
+  const flags = g.truth_flags
+    ? `<div class="ev-tflag">${esc(g.truth_flags)}</div>` : "";
+  return `<div class="ev-prov">${how}${sum}${quote}${flags}</div>`;
+};
+
 const statusCellHtml = (g, t, assessed) => {
   const m = mark(g.verified ? "filled" : "hollow", g.verified ? t("evals.verified") : t("evals.unverified"), { tone: g.verified ? "ok" : "mute" });
   const notAssessed = assessed && assessed.has(g.domain) ? "" :
@@ -233,7 +266,8 @@ const sourceCellHtml = (g, t, found) => {
 
 const actionCellHtml = (g, t) =>
   (!g.verified && !g.archived_at)
-    ? `<button type="button" class="btn btn-text" data-action="gold:openVerify" data-id="${esc(g.id)}">${esc(t("gold.enter"))}</button>`
+    ? `<button type="button" class="btn btn-text" data-action="gold:extract" data-domain="${esc(g.domain)}">${esc(t("evals.establish"))}</button>
+       <button type="button" class="btn btn-text" data-action="gold:openVerify" data-id="${esc(g.id)}">${esc(t("gold.enter"))}</button>`
     : "";
 
 const goldMenuItems = (g, t) => {
@@ -384,7 +418,7 @@ export async function render(env, data, ctx) {
       id: g.id,
       dim: !!g.archived_at,
       cells: [
-        merchantCellHtml(g),
+        merchantCellHtml(g) + provenanceHtml(g, t),
         metricCellHtml(g),
         monthlyCellHtml(g),
         statusCellHtml(g, t, assessed),
@@ -594,6 +628,14 @@ export function css() {
   .p-evals .ev-next-pred { font: 500 13px/1.5 var(--mono); color: var(--ink-3); white-space: nowrap; }
   .p-evals .ev-blind { font-size: 13px; color: var(--ink-3); margin-top: 12px; }
   .p-evals .ev-sat { font-size: 14px; color: var(--ink-2); }
+  .p-evals .ev-prov { margin-top: 6px; display: grid; gap: 4px; }
+  .p-evals .ev-arith { font: 500 12px/1.5 var(--mono); color: var(--ink-2); }
+  .p-evals .ev-quote {
+    margin: 2px 0 0; padding-left: 9px; border-left: 2px solid var(--line-2);
+    font-size: 12.5px; line-height: 1.5; color: var(--ink-2); max-width: 62ch;
+  }
+  .p-evals .ev-tflag { font-size: 12px; color: var(--held); max-width: 62ch; }
+
   /* The metric on an unverified row is an expectation, not a reading. */
   .p-evals .ev-unconf { color: var(--held); font-weight: 560; cursor: help; }
   .p-evals .ev-pend { display: grid; gap: 1px; background: var(--line-1); border-block: 1px solid var(--line-1); }
@@ -932,6 +974,36 @@ export function script() {
     document.addEventListener("floor:action", async (e) => {
       const { action, id } = e.detail || {};
       if (!action) return;
+      if (action === "gold:extract") {
+        // Establishing truth reads a filing and costs a fraction of a cent, so
+        // it confirms nothing and simply runs, then reloads the row in place.
+        const el = e.detail?.el || document.querySelector('[data-action="gold:extract"][data-domain="' + (e.detail?.domain || "") + '"]');
+        const domain = e.detail?.domain || el?.getAttribute("data-domain");
+        if (!domain) return;
+        if (el) { el.disabled = true; el.textContent = T("evals.establishing", "Reading filings\u2026"); }
+        try {
+          const r = await fetch("/api/truth/" + encodeURIComponent(domain), { method: "POST" }).then((x) => x.json());
+          if (!r.ok) {
+            Floor.toast(T("evals.establishFail", "No figure found: {n}", { n: (r.note || r.error || "").slice(0, 120) }));
+            if (el) { el.disabled = false; el.textContent = T("evals.establish", "Establish from filings"); }
+            return;
+          }
+          Floor.toast(T("evals.establishOk", "{d} established at {n} per month", {
+            d: domain, n: Number(r.monthly).toLocaleString(),
+          }));
+          // In place, like every other mutation on this page. A reload here
+          // would be the rule this product enforces everywhere else, broken by
+          // the person who wrote the rule.
+          const fresh = await fetch("/api/gold").then((x) => x.json());
+          const row = (fresh.rows || []).find((x) => x.domain === domain);
+          if (row) updateGoldRow(row);
+          refreshAggregates();
+        } catch (err) {
+          Floor.toast(T("common.notSaved", "Not saved: {err}", { err: err.message }));
+          if (el) { el.disabled = false; el.textContent = T("evals.establish", "Establish from filings"); }
+        }
+        return;
+      }
       if (action === "gold:openVerify") return openVerify(id);
       if (action === "gold:openEdit") return openEdit(id);
       if (action === "gold:openAdd") return openAdd();
