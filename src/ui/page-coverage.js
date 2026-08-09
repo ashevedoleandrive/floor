@@ -17,7 +17,7 @@
    - Regions, never countries. Five, matched to the API's region codes.
    - sample_too_small is authoritative: a hatched region can never
      receive a fill, whatever its rate. Its label leads with the count,
-     and every rate under the floor is withheld rather than printed small.
+     and a region under the floor says how many more it needs instead.
    - The sample size is always printed on the field, in both modes.
    - Projected renders dashed and grained, never solid. Solid ink is a
      promise a human can click through to a source.
@@ -141,7 +141,7 @@ export const keys = {
   "cvg.stConf": { en: "Median confidence", es: "Confianza mediana" },
   "cvg.noteSmall": { en: "below the sample floor of {min}", es: "bajo el piso muestral de {min}" },
   "cvg.noteNoRuns": { en: "no assessments yet", es: "aún sin análisis" },
-  "cvg.noteSmallConf": { en: "withheld under the sample floor", es: "retenida bajo el piso muestral" },
+  "cvg.noteSmallConf": { en: "not enough assessed to rate", es: "no hay suficientes analizadas para calificar" },
 
   "cvg.mkMeasured": { en: "measured", es: "medido" },
   "cvg.mkBelowFloor": { en: "below the sample floor of {min}", es: "bajo el piso muestral de {min}" },
@@ -177,13 +177,14 @@ export const keys = {
     es: "Dónde Floor puede calificar y dónde puede calificarse a sí mismo",
   },
   "cvg.oneSub": {
-    en: "the same regions fail in both columns, and they fail for the same reason: nothing there reads a filed document. A rate under the sample floor is withheld rather than printed small",
+    en: "the same regions fail in both columns, and they fail for the same reason: nothing there reads a filed document. Where too few are assessed to support a rate, the region says how many more it needs",
     es: "las mismas regiones fallan en ambas columnas, y fallan por la misma razón: allí nada lee un documento presentado. Una tasa bajo el piso muestral se retiene en lugar de imprimirse pequeña",
   },
   "cvg.colAccounts": { en: "Accounts", es: "Cuentas" },
   "cvg.colFiling": { en: "Claims from a filing", es: "Afirmaciones de un informe" },
   "cvg.colGradeable": { en: "Can grade itself", es: "Se puede calificar" },
-  "cvg.withheld": { en: "withheld, n = {n}", es: "retenida, n = {n}" },
+  "cvg.withheld": { en: "{k} more to rate", es: "faltan {k} para calificar" },
+  "cvg.withheldOne": { en: "1 more to rate", es: "falta 1 para calificar" },
   "cvg.gradeYes": { en: "truth is checkable", es: "la verdad es comprobable" },
   "cvg.gradeNo": { en: "nothing to grade against", es: "nada contra qué calificar" },
   "cvg.oneFoot": {
@@ -731,7 +732,11 @@ function constraintTable(T, data) {
     const filing = filingClaims(m);
 
     const rateCell = small
-      ? mark("hatch", T("cvg.withheld", { n: m.assessed }), { tone: "held" })
+      // Say what is needed, not that something is being withheld. Same rule as
+      // the Accuracy page: announcing a refusal reads as written for its author.
+      ? mark("hatch", ((5 - (m.assessed || 0)) === 1
+          ? T("cvg.withheldOne")
+          : T("cvg.withheld", { k: Math.max(1, 5 - (m.assessed || 0)) })), { tone: "held" })
       : `<span class="mono">${esc(fmtPct(m.estimate_rate_pct) ?? "")}</span>`;
     const confCell = small ? GHOST : `<span class="mono">${esc(fmtConf(m.median_confidence) ?? "")}</span>`;
     const filingCell = claims
