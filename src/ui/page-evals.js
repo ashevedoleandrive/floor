@@ -537,7 +537,22 @@ export async function render(env, data, ctx) {
      answer key. ---- */
   const active = rows.filter((g) => !g.archived_at);
   const archived = rows.filter((g) => g.archived_at);
-  const gradable = (g) => !!g.verified || (sources[g.domain] || []).length > 0;
+  /**
+   * Can this row be graded.
+   *
+   * The question is whether Floor has produced a prediction for the merchant,
+   * which means whether it has a live assessment. Nothing else.
+   *
+   * This previously tested for source links, using "we found documents" as a
+   * proxy for "we have a prediction". The two come apart exactly where it
+   * matters: Zalando is assessed and Floor abstained on it, so the critic
+   * dropped every claim and there are no surviving evidence URLs. The proxy
+   * then reported an assessed merchant as needing an assessment, which is
+   * false, and hid the fact that an abstain is itself a measurement. Abstains
+   * are graded, they land in the abstain rate, and that rate is reported rather
+   * than hidden.
+   */
+  const gradable = (g) => !!g.verified || assessed.has(g.domain);
   const mainRows = [...active.filter(gradable), ...archived];
   const pendingRows = active.filter((g) => !gradable(g));
   const verified = active.filter((g) => g.verified).length;
@@ -877,7 +892,12 @@ export function script() {
     const DOTS_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="11.5" cy="7" r="1.3"/></svg>';
 
     /* ---- truth-base builders, mirroring render() ---- */
-    const gradable = (g) => !!g.verified || (SOURCES[g.domain] || []).length > 0;
+    // Mirrors render() exactly. Two copies of this predicate exist, server and
+    // client, and they drifted: the client kept the old source-links proxy
+    // after the server moved to asking whether an assessment exists. The server
+    // then put Zalando in the right place and the client put it back in the
+    // wrong one. If these two ever disagree again, this is the pair to check.
+    const gradable = (g) => !!g.verified || ASSESSED.has(g.domain);
 
     const merchantCell = (g) => {
       const gains = GAINS[g.domain];

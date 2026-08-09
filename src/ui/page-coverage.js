@@ -1,13 +1,23 @@
 /* Floor · page-coverage.js — the Coverage world map (/coverage)
    ---------------------------------------------------------------------
-   DESIGN-SPEC §4.4. The investment argument drawn as geography: lit
-   means Floor can qualify accounts there, dark means blind, and the
-   Today / Wired toggle shows what the unwired registry would light up.
+   DESIGN-SPEC §4.4, rebuilt 2026-08-09 around the argument the page was
+   always half making.
+
+   Lit means Floor can qualify merchants in that region. Dark means it is
+   blind. That much was already here and it stays. What was missing is
+   the sentence underneath it: coverage and measurability are the same
+   constraint. Floor is dark in LATAM because no source reads documents
+   there, and it cannot grade its own accuracy in LATAM for that identical
+   reason. Those read as two unrelated weaknesses on two unrelated pages.
+   They are one, and one wired source moves both. The map shows the first
+   symptom; the table under it shows both symptoms side by side, measured,
+   region by region, out of evidence the pipeline already stored.
 
    Laws carried in this file:
    - Regions, never countries. Five, matched to the API's region codes.
    - sample_too_small is authoritative: a hatched region can never
-     receive a fill, whatever its rate. Its label leads with the count.
+     receive a fill, whatever its rate. Its label leads with the count,
+     and every rate under the floor is withheld rather than printed small.
    - The sample size is always printed on the field, in both modes.
    - Projected renders dashed and grained, never solid. Solid ink is a
      promise a human can click through to a source.
@@ -19,8 +29,8 @@
      selection, both state changes. Reduced motion collapses them.
    --------------------------------------------------------------------- */
 
-import { esc, mark, level, statRow, btn } from "./kit.js";
-import { coverageByRegion } from "../lib/sources.js";
+import { esc, mark, level, statRow, section, table, btn } from "./kit.js";
+import { coverageByRegion, SOURCES } from "../lib/sources.js";
 
 export const meta = {
   route: "/coverage",
@@ -36,6 +46,10 @@ export const keys = {
     es: "{assessed} de {total} cuentas analizadas · {estimated} con estimación · {abstained} abstenciones",
   },
   "cvg.sourcesBtn": { en: "Source registry", es: "Registro de fuentes" },
+  "cvg.claim": {
+    en: "Lit means Floor can qualify merchants in that region. Dark means it is blind. The map answers a second question at the same time, because ground truth is read out of the same filings the estimate is built from: where Floor can check whether it is right. One source wired in a region moves both.",
+    es: "Iluminado significa que Floor puede calificar comercios en esa región. Oscuro significa que está ciego. El mapa responde una segunda pregunta al mismo tiempo, porque la verdad de referencia sale de los mismos informes con los que se arma la estimación: dónde Floor puede comprobar si acierta. Conectar una fuente en una región mueve las dos cosas.",
+  },
 
   // region names (the API label is English only)
   "cvg.r.NORTHAMERICA": { en: "North America", es: "Norteamérica" },
@@ -108,8 +122,8 @@ export const keys = {
     es: "{estimated} de {assessed} cuentas analizadas produjeron una estimación. {abstained} se abstuvieron, en voz alta, en lugar de adivinar.",
   },
   "cvg.latamLine": {
-    en: "Yuno operates in all five regions and LATAM is its home market. Floor is blind there today: {a} of {t} accounts assessed.",
-    es: "Yuno opera en las cinco regiones y LATAM es su mercado principal. Floor está ciego allí hoy: {a} de {t} cuentas analizadas.",
+    en: "LATAM is Yuno's home market and Floor is blind there: {a} of {t} accounts assessed, and with every source in the registry wired the region still only reaches {level}.",
+    es: "LATAM es el mercado principal de Yuno y Floor está ciego allí: {a} de {t} cuentas analizadas, y aun con todo el registro conectado la región solo llega a {level}.",
   },
   "cvg.argument": {
     en: "A measured gap is an argument for investment. An unmeasured one is only a weakness. Wiring sources turns the assumption into a measurement.",
@@ -131,6 +145,52 @@ export const keys = {
 
   "cvg.mkMeasured": { en: "measured", es: "medido" },
   "cvg.mkBelowFloor": { en: "below the sample floor of {min}", es: "bajo el piso muestral de {min}" },
+
+  /* what is connected in this region, which is the half of the story the
+     page could not tell while only one source existed */
+  "cvg.connTitle": { en: "What is connected here", es: "Qué está conectado aquí" },
+  "cvg.connFiling": {
+    en: "A regulator's own filing store is connected here, so a merchant's evidence starts from a primary document rather than from a search for commentary about one.",
+    es: "Aquí está conectado el archivo de informes del propio regulador, así que la evidencia de un comercio empieza en un documento primario y no en una búsqueda de comentarios sobre él.",
+  },
+  "cvg.connGeneral": {
+    en: "Only the general web search is connected here. Nothing in this region reads a filed document, which is the whole reason the region looks the way it does.",
+    es: "Aquí solo está conectada la búsqueda web general. Nada en esta región lee un documento presentado, y esa es toda la razón por la que la región se ve así.",
+  },
+  "cvg.gradeLine": {
+    en: "{a} of {b} surviving claims here come from a regulator filing, which is what an accuracy score can be graded against.",
+    es: "{a} de {b} afirmaciones vigentes aquí vienen de un informe regulatorio, que es contra lo que se puede calificar la precisión.",
+  },
+  "cvg.gradeLineNone": {
+    en: "No surviving claim here comes from a regulator filing, so there is nothing to grade an accuracy score against.",
+    es: "Ninguna afirmación vigente aquí viene de un informe regulatorio, así que no hay nada contra qué calificar la precisión.",
+  },
+  "cvg.gradeLineEmpty": {
+    en: "Nothing has been assessed here, so there are no claims and nothing to grade.",
+    es: "Aquí no se ha analizado nada, así que no hay afirmaciones ni nada que calificar.",
+  },
+
+  /* the constraint table */
+  "cvg.oneLabel": { en: "One constraint", es: "Una sola restricción" },
+  "cvg.oneTitle": {
+    en: "Where Floor can qualify, and where it can grade itself",
+    es: "Dónde Floor puede calificar y dónde puede calificarse a sí mismo",
+  },
+  "cvg.oneSub": {
+    en: "the same regions fail in both columns, and they fail for the same reason: nothing there reads a filed document. A rate under the sample floor is withheld rather than printed small",
+    es: "las mismas regiones fallan en ambas columnas, y fallan por la misma razón: allí nada lee un documento presentado. Una tasa bajo el piso muestral se retiene en lugar de imprimirse pequeña",
+  },
+  "cvg.colAccounts": { en: "Accounts", es: "Cuentas" },
+  "cvg.colFiling": { en: "Claims from a filing", es: "Afirmaciones de un informe" },
+  "cvg.colGradeable": { en: "Can grade itself", es: "Se puede calificar" },
+  "cvg.withheld": { en: "withheld, n = {n}", es: "retenida, n = {n}" },
+  "cvg.gradeYes": { en: "truth is checkable", es: "la verdad es comprobable" },
+  "cvg.gradeNo": { en: "nothing to grade against", es: "nada contra qué calificar" },
+  "cvg.oneFoot": {
+    en: "Coverage and measurability are not two weaknesses. They are one. The filings that let Floor size a merchant are the filings an accuracy score is graded against, so a source wired in a dark region lights it and makes it checkable in the same move.",
+    es: "Cobertura y medición no son dos debilidades. Son una sola. Los informes que permiten dimensionar un comercio son los mismos contra los que se califica la precisión, así que una fuente conectada en una región oscura la ilumina y la vuelve comprobable en el mismo movimiento.",
+  },
+  "cvg.seeAccuracy": { en: "How the grading works", es: "Cómo funciona la calificación" },
 
   "cvg.absTitle": { en: "Why it abstained", es: "Por qué se abstuvo" },
   "cvg.cause.pipeline_failure": {
@@ -279,7 +339,6 @@ const BORDERS = [
 
 /* ========================= fill computation ======================== */
 
-const FIELD = "#0F1116";
 const RAMP_LO = [26, 29, 38];    // #1A1D26, blind
 const RAMP_HI = [239, 231, 207]; // --lit #EFE7CF, confident
 
@@ -293,6 +352,16 @@ function measuredFill(m) {
 
 const COST_RANK = { free: 0, low: 1, included: 2, owned: 2, paid: 3, enterprise: 4 };
 const LEVEL_N = { strong: 3, partial: 2, weak: 1, none: 0 };
+
+/* The two connected sources, read from the registry rather than named in
+   copy, so this page cannot go stale the way its predecessor did when
+   EDGAR was wired and every sentence still said "one source". */
+const CONNECTED = SOURCES.filter((s) => s.status === "connected");
+/* A source that reads filed documents rather than searching for
+   commentary about them. Kind is the registry's own word for it. */
+const READS_FILINGS = (s) => s.kind === "volume" || s.kind === "truth";
+
+const GHOST = `<span class="ink-4">&ndash;</span>`;
 
 /* ============================= helpers ============================= */
 
@@ -341,6 +410,12 @@ function fmtConf(n) {
   if (n == null) return null;
   return String(Number(n).toFixed(2));
 }
+
+/** Claims that survived the critic and came out of a regulator filing.
+ *  This is the number the accuracy page depends on: truth is extracted
+ *  from filings, so a region with none of these cannot be graded. */
+const filingClaims = (m) => Number(m?.evidence_quality?.primary_filing?.count || 0);
+const totalClaims = (m) => Number(m?.claims_surviving || 0);
 
 /* ======================== the field (SVG) ========================== */
 
@@ -463,6 +538,39 @@ function fieldSvg(data, T, wired, ownersMap, outlineOnly) {
 
 /* ============================ the rail ============================= */
 
+/** What is actually wired in this region, and what that buys. The list
+ *  is the registry's own coverage rating per source, so a connected
+ *  source that reaches nothing here says "none" out loud rather than
+ *  being quietly dropped. */
+function connectedBlock(T, region) {
+  const items = CONNECTED.map((s) => {
+    const lvl = s.coverage?.[region] || "none";
+    return `<li class="cv-conn">
+      <span class="cv-conn-name">${esc(s.name)}</span>
+      ${level(LEVEL_N[lvl] ?? 0, 3, T(`cov.${lvl}`), { tone: "mute" })}
+    </li>`;
+  }).join("");
+
+  const filingHere = CONNECTED.some((s) => READS_FILINGS(s) && (LEVEL_N[s.coverage?.[region]] ?? 0) >= 2);
+  const note = filingHere ? T("cvg.connFiling") : T("cvg.connGeneral");
+
+  return `<div class="cv-block">
+    <span class="t-label cv-block-l">${esc(T("cvg.connTitle"))}</span>
+    <ul class="cv-conns">${items}</ul>
+    <p class="cv-note">${esc(note)}</p>
+  </div>`;
+}
+
+/** The measurability half, stated per region in the same block that
+ *  states coverage, because they are the same fact seen twice. */
+function gradeLine(T, m) {
+  const claims = totalClaims(m), filing = filingClaims(m);
+  const text = !claims ? T("cvg.gradeLineEmpty")
+    : filing ? T("cvg.gradeLine", { a: filing, b: claims })
+      : T("cvg.gradeLineNone");
+  return `<p class="cv-grade">${esc(text)}</p>`;
+}
+
 function causesList(T, measured) {
   const entries = Object.entries(measured.abstain_causes || {})
     .sort((a, b) => b[1].count - a[1].count);
@@ -490,7 +598,7 @@ function liftList(T, r) {
 
   const m = r.measured;
   const intro = m.sample_too_small && sources.length
-    ? `<p class="cv-lift-intro">${esc(T("cvg.liftFirst"))}</p>` : "";
+    ? `<p class="cv-note">${esc(T("cvg.liftFirst"))}</p>` : "";
 
   const items = sources.length ? sources.map((s) => {
     const lvl = level(LEVEL_N[s.coverage_level] ?? 0, 3, T(`cov.${s.coverage_level}`), { tone: "mute" });
@@ -506,7 +614,7 @@ function liftList(T, r) {
 
   const body = sources.length
     ? `<ul class="cv-lifts">${items}</ul>`
-    : `<p class="cv-lift-intro">${esc(T("cvg.liftNone"))}</p>`;
+    : `<p class="cv-note">${esc(T("cvg.liftNone"))}</p>`;
 
   return `<div class="cv-block">
     <span class="t-label cv-block-l">${esc(T("cvg.liftTitle"))}</span>
@@ -550,6 +658,8 @@ function regionPanel(T, r, minSample) {
     </header>
     <div class="cv-mark">${stateMark}</div>
     ${stats}
+    ${connectedBlock(T, r.region)}
+    ${gradeLine(T, m)}
     ${causesList(T, m)}
     ${liftList(T, r)}
     <div class="cv-foot">
@@ -558,7 +668,7 @@ function regionPanel(T, r, minSample) {
   </section>`;
 }
 
-function overallPanel(T, data, dayOneEmpty) {
+function overallPanel(T, data, wired, dayOneEmpty) {
   const m = data.overall.measured;
   const latam = (data.regions || []).find((r) => r.region === "LATAM");
   const unassigned = data.overall.accounts_with_unassigned_region;
@@ -585,10 +695,11 @@ function overallPanel(T, data, dayOneEmpty) {
     ${causesList(T, m)}
     ${latam ? `<p class="cv-latam">${esc(T("cvg.latamLine", {
       a: latam.measured.assessed, t: latam.measured.total_accounts,
+      level: T(`cov.${wired.LATAM || "none"}`),
     }))}</p>` : ""}
-    ${unassigned > 0 ? `<p class="cv-unassigned">${esc(T("cvg.unassignedRegion", { n: unassigned }))}</p>` : ""}
+    ${unassigned > 0 ? `<p class="cv-note">${esc(T("cvg.unassignedRegion", { n: unassigned }))}</p>` : ""}
     <p class="cv-argument">${esc(T("cvg.argument"))}</p>
-    <p class="cv-hint">${esc(T("cvg.railHint"))}</p>`;
+    <p class="cv-note">${esc(T("cvg.railHint"))}</p>`;
 
   return `<section class="cov-panel" data-panel="ALL">
     <header class="cv-head">
@@ -600,6 +711,62 @@ function overallPanel(T, data, dayOneEmpty) {
     ${stats}
     ${empty}${body}
   </section>`;
+}
+
+/* ==================== the one-constraint table ====================== */
+/* The map shows one symptom. This shows both, on the same row, from the
+   same measurement: whether Floor can qualify a merchant in a region,
+   and whether anything there discloses a figure it could be graded
+   against. They rise and fall together, which is the argument. */
+
+function constraintTable(T, data, minSample) {
+  const rows = ORDER.map((code) => {
+    const r = (data.regions || []).find((x) => x.region === code);
+    if (!r) return null;
+    const m = r.measured;
+    const small = !!m.sample_too_small;
+    const claims = totalClaims(m);
+    const filing = filingClaims(m);
+
+    const rateCell = small
+      ? mark("hatch", T("cvg.withheld", { n: m.assessed }), { tone: "held" })
+      : `<span class="mono">${esc(fmtPct(m.estimate_rate_pct) ?? "")}</span>`;
+    const confCell = small ? GHOST : `<span class="mono">${esc(fmtConf(m.median_confidence) ?? "")}</span>`;
+    const filingCell = claims
+      ? `<span class="mono">${filing}</span><span class="u"> / ${claims}</span>`
+      : GHOST;
+    const gradeCell = filing > 0
+      ? mark("filled", T("cvg.gradeYes"), { tone: "ok" })
+      : mark("hatch", T("cvg.gradeNo"), { tone: "held" });
+
+    return {
+      id: code,
+      accent: small ? "held" : undefined,
+      cells: [
+        `<span class="cv-tr-name">${esc(T(`cvg.r.${code}`))}</span>`,
+        `<span class="mono">${m.total_accounts}</span>`,
+        `<span class="mono">${m.assessed}</span>`,
+        rateCell,
+        confCell,
+        filingCell,
+        gradeCell,
+      ],
+    };
+  }).filter(Boolean);
+
+  return table({
+    cols: [
+      { key: "region", label: T("cvg.railRegion") },
+      { key: "accounts", label: T("cvg.colAccounts"), align: "right", width: 84 },
+      { key: "assessed", label: T("cvg.stAssessed"), align: "right", width: 96 },
+      { key: "rate", label: T("cvg.stRate") },
+      { key: "conf", label: T("cvg.stConf"), align: "right", width: 132 },
+      { key: "filing", label: T("cvg.colFiling"), align: "right", width: 150 },
+      { key: "grade", label: T("cvg.colGradeable") },
+    ],
+    rows,
+    size: "dense",
+  }, T);
 }
 
 /* ============================= render ============================== */
@@ -635,12 +802,21 @@ export async function render(env, data, ctx) {
     (dayOneEmpty ? " " + esc(T("cvg.modeCaptionEmpty")) : "");
 
   const panels = [
-    overallPanel(T, data, dayOneEmpty),
+    overallPanel(T, data, wired, dayOneEmpty),
     ...ORDER.map((code) => {
       const r = (data.regions || []).find((x) => x.region === code);
       return r ? regionPanel(T, r, minSample) : "";
     }),
   ].join("\n");
+
+  const constraintSection = section({
+    label: T("cvg.oneLabel"),
+    title: T("cvg.oneTitle"),
+    sub: esc(T("cvg.oneSub")),
+    body: `${constraintTable(T, data, minSample)}
+      <p class="cv-onefoot t-body">${esc(T("cvg.oneFoot"))}</p>
+      <p class="cv-onelink"><a href="/evals">${esc(T("cvg.seeAccuracy"))} &rarr;</a></p>`,
+  });
 
   return `
   <div class="whead">
@@ -653,6 +829,8 @@ export async function render(env, data, ctx) {
     </div>
     <div class="whead-a">${btn(T("cvg.sourcesBtn"), { kind: "quiet", href: "/sources" })}</div>
   </div>
+
+  <p class="cov-claim t-body">${esc(T("cvg.claim"))}</p>
 
   <div class="cov-wrap">
     <div class="cov-grid">
@@ -676,13 +854,16 @@ export async function render(env, data, ctx) {
       </div>
       <aside class="cov-rail">${panels}</aside>
     </div>
-  </div>`;
+  </div>
+
+  ${constraintSection}`;
 }
 
 /* =============================== css =============================== */
 
 export function css() {
   return `
+.p-coverage .cov-claim { max-width: 78ch; margin-top: 16px; color: var(--ink-2); }
 .p-coverage .cov-wrap { margin-top: 24px; }
 .p-coverage .cov-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
 .p-coverage .cov-main { min-width: 0; }
@@ -792,13 +973,23 @@ export function css() {
 
 .p-coverage .cv-sentence { margin-top: 16px; font: 400 14px/1.55 var(--sans); color: var(--ink-1); }
 .p-coverage .cv-latam { margin-top: 12px; font: 400 13px/1.55 var(--sans); color: var(--ink-2); }
-.p-coverage .cv-unassigned { margin-top: 8px; font: 400 12px/1.5 var(--sans); color: var(--ink-3); }
 .p-coverage .cv-argument { margin-top: 12px; font: 500 13px/1.55 var(--sans); color: var(--ink-1); }
-.p-coverage .cv-hint { margin-top: 12px; font: 400 12px/1.5 var(--sans); color: var(--ink-3); }
+.p-coverage .cv-note { margin-top: 8px; font: 400 12px/1.5 var(--sans); color: var(--ink-3); max-width: 46ch; }
 .p-coverage .cov-panel .f-empty { margin-top: 16px; }
 
 .p-coverage .cv-block { margin-top: 20px; }
 .p-coverage .cv-block-l { display: block; color: var(--ink-3); margin-bottom: 8px; }
+
+/* what is connected here */
+.p-coverage .cv-conns { list-style: none; margin: 0; padding: 0; }
+.p-coverage .cv-conn {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 6px 0; border-bottom: 1px solid var(--line);
+}
+.p-coverage .cv-conn-name { font: 500 13px/1.45 var(--sans); color: var(--ink-1); min-width: 0; }
+.p-coverage .cv-conn .mk { font-size: 12px; flex: none; }
+.p-coverage .cv-grade { margin-top: 12px; font: 400 13px/1.55 var(--sans); color: var(--ink-2); }
+
 .p-coverage .cv-causes { list-style: none; margin: 0; padding: 0; }
 .p-coverage .cv-cause {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px;
@@ -809,7 +1000,6 @@ export function css() {
 .p-coverage .cv-cause-bar { grid-column: 1 / -1; height: 3px; background: var(--well); border-radius: 1px; }
 .p-coverage .cv-cause-bar i { display: block; height: 100%; border-radius: 1px; background: color-mix(in srgb, var(--held) 45%, transparent); }
 
-.p-coverage .cv-lift-intro { font: 400 12px/1.5 var(--sans); color: var(--ink-2); margin-bottom: 8px; max-width: 44ch; }
 .p-coverage .cv-lifts { list-style: none; margin: 0; padding: 0; }
 .p-coverage .cv-lift { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .p-coverage .cv-lift-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -820,6 +1010,12 @@ export function css() {
 .p-coverage .cv-lift-move { font: 400 12px/1.45 var(--sans); color: var(--ink-2); }
 
 .p-coverage .cv-foot { margin-top: 16px; }
+
+/* ---- the one-constraint table ---- */
+.p-coverage .cv-tr-name { font-weight: 500; }
+.p-coverage .cv-onefoot { margin-top: 16px; max-width: 78ch; color: var(--ink-2); }
+.p-coverage .cv-onelink { margin-top: 8px; font-size: 13px; }
+
 .p-coverage .f-error { margin-bottom: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .p-coverage .cov-field-err { padding: 20px; }
 
