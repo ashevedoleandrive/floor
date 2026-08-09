@@ -719,10 +719,12 @@ function overallPanel(T, data, wired, dayOneEmpty) {
    and whether anything there discloses a figure it could be graded
    against. They rise and fall together, which is the argument. */
 
-function constraintTable(T, data, minSample) {
-  const rows = ORDER.map((code) => {
-    const r = (data.regions || []).find((x) => x.region === code);
-    if (!r) return null;
+function constraintTable(T, data) {
+  // The API's own region order, not the map's west-to-east stagger: the
+  // rows then run most-measured to least, which is what makes the two
+  // columns visibly fail together.
+  const rows = (data.regions || []).map((r) => {
+    const code = r.region;
     const m = r.measured;
     const small = !!m.sample_too_small;
     const claims = totalClaims(m);
@@ -752,7 +754,7 @@ function constraintTable(T, data, minSample) {
         gradeCell,
       ],
     };
-  }).filter(Boolean);
+  });
 
   return table({
     cols: [
@@ -813,7 +815,7 @@ export async function render(env, data, ctx) {
     label: T("cvg.oneLabel"),
     title: T("cvg.oneTitle"),
     sub: esc(T("cvg.oneSub")),
-    body: `${constraintTable(T, data, minSample)}
+    body: `${constraintTable(T, data)}
       <p class="cv-onefoot t-body">${esc(T("cvg.oneFoot"))}</p>
       <p class="cv-onelink"><a href="/evals">${esc(T("cvg.seeAccuracy"))} &rarr;</a></p>`,
   });

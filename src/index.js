@@ -53,12 +53,16 @@ const PAGES = {
     // figure: handing over the source is navigation, filling in the number
     // would be the verification itself.
     const sources = {};
+    const { results: filers } = await env.DB.prepare(
+      "SELECT domain, sec_cik, sec_checked_at FROM accounts"
+    ).all();
+    const sec = Object.fromEntries((filers || []).map((r) => [r.domain, { cik: r.sec_cik, checked: !!r.sec_checked_at }]));
     for (const row of gold.rows) {
       if (row.verified) continue;
       const found = await goldSources(env, row.domain, row.disclosed_metric);
       if (found.length) sources[row.domain] = found;
     }
-    return { evals, gold, sources, cost_per_account: q.cost.per_account,
+    return { evals, gold, sources, sec, cost_per_account: q.cost.per_account,
              suggest: suggestGold({ goldRows: gold.rows, queueRows: q.rows }) };
   } },
   "/model":    { mod: pageModel,    data: (env) => buildQueue(env) },
@@ -173,6 +177,19 @@ export default {
       }
       if (p.startsWith("/api/truth/") && request.method === "POST")
         return json(await establishTruth(env, normaliseDomain(decodeURIComponent(p.slice(11)))));
+      if (p === "/api/edgar-scan" && request.method === "POST") {
+        const { results } = await env.DB.prepare(
+          "SELECT a.domain, a.name FROM accounts a JOIN gold_set g ON g.domain=a.domain WHERE a.sec_checked_at IS NULL"
+        ).all();
+        const out = [];
+        for (const r of results || []) {
+          const src = await primarySources(env, { domain: r.domain, name: r.name });
+          await env.DB.prepare("UPDATE accounts SET sec_cik=?, sec_checked_at=datetime('now') WHERE domain=?")
+            .bind(src.ok ? src.cik : null, r.domain).run();
+          out.push({ domain: r.domain, cik: src.ok ? src.cik : null });
+        }
+        return json({ ok: true, checked: out.length, results: out });
+      }
       if (p === "/api/gold/suggest") {
         const [gold, q] = [await listGold(env), await buildQueue(env)];
         return json({ ok: true, ...suggestGold({ goldRows: gold.rows, queueRows: q.rows }) });

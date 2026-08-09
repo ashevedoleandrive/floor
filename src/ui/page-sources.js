@@ -1,23 +1,34 @@
 /* Floor · page-sources.js — the Sources page (route /sources)
    ---------------------------------------------------------------------
-   Three things on one page: what is connected today (two sources, and
-   SEC EDGAR plays two distinct roles that this page is responsible for
-   distinguishing), the source registry (ten sources, what each unlocks
-   and where it stops per region), and the classification rules that
-   decide which tier every claim's source is graded at.
+   Rebuilt 2026-08-09, when the page stopped being true. It was written
+   when exactly one source was connected and said so in four places. Two
+   are connected now, and the second one, the SEC's own filing store,
+   does two different jobs that the old page had no way to distinguish:
 
-   The durable claim this page exists to make: provenance, adversarial
+     in an assessment  the filing is fetched by CIK and reduced in code
+                       before any search runs, so research starts from
+                       primary text instead of hunting for a figure;
+     in the accuracy   ground truth is extracted from those same filings,
+       score           quoted verbatim, converted to a monthly rate in
+                       code. That only counts because EDGAR is genuinely
+                       independent of web search rather than the same
+                       engine asked twice.
+
+   So the page opens with a comparison of what is connected and what each
+   one is for, then the registry, then the rules. The durable claim under
+   all of it, which survives every source change: provenance, adversarial
    checking, abstention and a measured accuracy score make any source safe
-   to sell on. The trust layer does not change when the sources improve.
-   That sentence is carried by src.lede + verdict.abstainNote, reused
-   rather than rewritten, per the contract's "reuse an existing key" rule.
+   to build on. The plumbing is swappable, the trust is not. That sentence
+   is src.lede + verdict.abstainNote, reused rather than rewritten.
 
-   Deliberately unused i18n keys: src.note ("One source is connected"),
-   src.regSub ("One is live") and src.regFoot (still lists SEC EDGAR as
-   unwired) predate EDGAR's connection and describe an architecture that
-   no longer exists. i18n.js is router-owned, so this page replaces them
-   with src.note2 / src.regSub2 / src.regFoot2 from its own keys object
-   instead of overriding the shared dictionary.
+   Retired copy. src.note ("One source is connected"), src.regSub ("One is
+   live") and src.regFoot (still lists SEC EDGAR as unwired) describe an
+   architecture that no longer exists. i18n.js is router-owned, so this
+   page supersedes them with src.note2 / src.regSub2 / src.attackOrder
+   from its own keys object rather than editing the shared dictionary.
+   Nothing in this file names a source in prose: names, costs and counts
+   come from the registry payload, which is what stopped the page being
+   true the first time.
 
    Data: render() receives GET /api/sources synchronously (data param).
    Classification rules come from a separate client-side fetch of
@@ -59,17 +70,37 @@ const COST_KEY = {
   owned: "src.cost.owned",
 };
 
+/* Costs cheap enough that wiring them is a decision about time, not
+   budget. Drives the order-of-attack sentence and the "next up" tag, so
+   neither can name a source the registry has moved on from. */
+const CHEAP = new Set(["free", "low"]);
+
+/* The roles a connected source plays, one entry per source that has
+   authored role copy. `grades` is the claim that this source can serve
+   as an answer key, which is only true when it is not the same channel
+   the estimate came out of. A source connected without an entry here
+   renders honestly as "no role written yet" rather than being given one
+   it has not earned. */
+const ROLES = {
+  web_search: { grades: false },
+  sec_edgar: { grades: true },
+};
+
 const CHEV_SVG = `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 7l3-3.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 /* ============================== copy ================================ */
 /* Genuinely new to this page. Everything else (rules.*, src.covTitle,
-   tier.*, cov.*, dim.timing, action.save, common.notSaved, ...) already
-   exists in i18n.js and is reused as-is. */
+   src.lede, tier.*, cov.*, dim.timing, action.save, common.notSaved, ...)
+   already exists in i18n.js and is reused as-is. */
 
 export const keys = {
   "src.headerMeta": {
     en: "{connected} of {total} connected · {free} free and unwired · {regions} regions",
     es: "{connected} de {total} conectadas · {free} gratis y sin conectar · {regions} regiones",
+  },
+  "src.note2": {
+    en: "{connected} of {total} sources are connected. The rest are the upgrade path, and the trust layer above them does not change when they are added.",
+    es: "{connected} de {total} fuentes están conectadas. El resto es la ruta de mejora, y la capa de confianza encima de ellas no cambia cuando se agregan.",
   },
   "src.status.available": { en: "Available", es: "Disponible" },
   "src.colRegion":   { en: "Region", es: "Región" },
@@ -93,12 +124,89 @@ export const keys = {
   "src.region.LATAM":        { en: "LATAM", es: "LATAM" },
   "src.region.AMEA":         { en: "AMEA", es: "AMEA" },
   "src.rowDetailsAria": { en: "Source details", es: "Detalles de la fuente" },
-  "src.seeMap": { en: "See it as a map →", es: "Verlo como mapa →" },
+  "src.seeMap": { en: "See it as a map", es: "Verlo como mapa" },
   "src.enOnlyNote": {
     en: "Source and rule descriptions on this page are authored in English.",
     es: "Las descripciones de fuentes y reglas en esta página están escritas en inglés.",
   },
 
+  /* ---- what is connected, and what each one is for ---- */
+  "src.connLabel": { en: "Connected today", es: "Conectadas hoy" },
+  "src.connTitle": {
+    en: "What is connected, and what each one is for",
+    es: "Qué está conectado y para qué sirve cada una",
+  },
+  "src.connSub": {
+    en: "one finds what is public, the other is fetched straight from the regulator and read in code. The second does a second job as well, because an answer key has to come from somewhere the tool does not already depend on",
+    es: "una encuentra lo que es público, la otra se trae directo del regulador y se lee en código. La segunda hace además un segundo trabajo, porque la clave de respuestas tiene que venir de un lugar del que la herramienta no dependa ya",
+  },
+  "src.colReads":      { en: "What it reads", es: "Qué lee" },
+  "src.colInAssess":   { en: "In an assessment", es: "En un análisis" },
+  "src.colInAccuracy": { en: "In the accuracy score", es: "En la calificación de precisión" },
+  "src.gradesTool":  { en: "grades the tool", es: "califica la herramienta" },
+  "src.cannotGrade": { en: "cannot grade itself", es: "no puede calificarse a sí misma" },
+
+  "src.role.web_search.reads": {
+    en: "Public pages a search index can reach: filings, investor pages, press releases.",
+    es: "Páginas públicas que un índice de búsqueda alcanza: informes, páginas de inversores, notas de prensa.",
+  },
+  "src.role.web_search.assess": {
+    en: "Finds dated events and figures wherever they were published, and returns the URL it read so every claim can be followed.",
+    es: "Encuentra hechos fechados y cifras donde sea que se publicaron, y devuelve la URL que leyó para que cada afirmación se pueda seguir.",
+  },
+  "src.role.web_search.accuracy": {
+    en: "Nothing. A search engine cannot be its own answer key, so a truth found by search grades nothing.",
+    es: "Nada. Un buscador no puede ser su propia clave de respuestas, así que una verdad hallada por búsqueda no califica nada.",
+  },
+  "src.role.sec_edgar.reads": {
+    en: "The US regulator's own filing store. The newest 10-Q, 10-K or 8-K, fetched by company identifier rather than searched for.",
+    es: "El archivo de informes del propio regulador de EE. UU. El 10-Q, 10-K u 8-K más reciente, traído por identificador de empresa y no buscado.",
+  },
+  "src.role.sec_edgar.assess": {
+    en: "Runs before any search. The filing is reduced in code to the passages that mention volume and handed to research as primary evidence, so the searches that follow go on dated events instead of hunting for a figure.",
+    es: "Corre antes de cualquier búsqueda. El informe se reduce en código a los pasajes que mencionan volumen y se entrega a la investigación como evidencia primaria, así que las búsquedas siguientes van por hechos fechados en lugar de perseguir una cifra.",
+  },
+  "src.role.sec_edgar.accuracy": {
+    en: "Ground truth is extracted from the same filings, quoted verbatim, and converted to a monthly rate in code. A person typing a figure becomes the exception.",
+    es: "La verdad de referencia se extrae de esos mismos informes, se cita textual y se convierte a tasa mensual en código. Que una persona escriba la cifra pasa a ser la excepción.",
+  },
+
+  "src.independence": {
+    en: "An accuracy score is worth something only if the answer key is independent of the thing being graded. The filing store is a different pipe: fetched by identifier, not searched for, so a filing is free to contradict a figure that search produced.",
+    es: "Una calificación de precisión vale algo solo si la clave de respuestas es independiente de lo que se califica. El archivo de informes es otra tubería: se trae por identificador y no se busca, así que un informe puede contradecir una cifra que produjo la búsqueda.",
+  },
+  "src.edgarLimit": {
+    en: "Order and transaction counts are not in the regulator's structured data. That was checked, not assumed. The figures sit in prose inside the filings and still have to be read, so this source hands over authoritative documents rather than a database of numbers.",
+    es: "Los conteos de órdenes y transacciones no están en los datos estructurados del regulador. Eso se comprobó, no se supuso. Las cifras están en prosa dentro de los informes y todavía hay que leerlas, así que esta fuente entrega documentos autorizados y no una base de datos de números.",
+  },
+  "src.fallbackRole": {
+    en: "Connected. No role has been written for this source yet, so the registry entry below is all this page can honestly say about it.",
+    es: "Conectada. Todavía no se ha escrito su rol, así que la entrada del registro más abajo es todo lo que esta página puede afirmar con honestidad.",
+  },
+
+  /* ---- coverage comparison ---- */
+  "src.nowStrong": {
+    en: "{regions} already reads strong on what is connected, and it got there because a statutory filing registry is wired for it. Every other region is carried by general web search alone.",
+    es: "{regions} ya lee como fuerte con lo que está conectado, y llegó ahí porque tiene conectado un registro estatutario de informes. Todas las demás regiones se sostienen solo con la búsqueda web general.",
+  },
+
+  /* ---- registry ---- */
+  "src.regSub2": {
+    en: "{total} sources worth wiring, {connected} of them live. Open any row for what it unlocks and where it stops.",
+    es: "{total} fuentes que vale la pena conectar, {connected} de ellas vivas. Abre cualquier fila para ver qué desbloquea y dónde se queda corta.",
+  },
+  "src.nextUp": { en: "next up", es: "lo siguiente" },
+  "src.attackOrder": {
+    en: "Order of attack: {names}. Both are statutory filing registries, the same kind of source that is already connected, and that kind is the only one that lights a dark region and makes it gradeable in one move. Paid panels come after the eval harness can show they earn their price.",
+    es: "Orden de ataque: {names}. Ambas son registros estatutarios de informes, el mismo tipo de fuente que ya está conectada, y ese tipo es el único que ilumina una región oscura y la vuelve calificable en un solo movimiento. Los paneles pagados vienen después, cuando el arnés de evaluación pueda demostrar que valen su precio.",
+  },
+  "src.attackNone": {
+    en: "Everything still unwired carries a real price, so the next source is a budget decision rather than an afternoon.",
+    es: "Todo lo que queda sin conectar tiene un precio real, así que la próxima fuente es una decisión de presupuesto y no una tarde de trabajo.",
+  },
+  "src.nameCost": { en: "{name} ({cost})", es: "{name} ({cost})" },
+
+  /* ---- rules ---- */
   "rules.testLabel": { en: "Test a URL", es: "Probar una URL" },
   "rules.testPh": {
     en: "Paste a source URL to see which rule matches",
@@ -115,6 +223,10 @@ export const keys = {
   "rules.testNoMatch": {
     en: "No rule matches. Falls through to {tier} at weight {w}.",
     es: "Ninguna regla coincide. Cae en {tier} con peso {w}.",
+  },
+  "rules.offLaw": {
+    en: "A disabled rule stays in this table, visibly off, with Enable in its own menu. An action that removes its own reversal from the screen is the bug this table exists to make impossible.",
+    es: "Una regla desactivada se queda en esta tabla, visiblemente apagada, con Activar en su propio menú. Una acción que borra de la pantalla su propia reversa es el error que esta tabla existe para volver imposible.",
   },
   "rules.patternHint": {
     en: "Matched as a case-insensitive substring of the source URL.",
@@ -174,17 +286,53 @@ function registryExpansion(source, t) {
   </div>`;
 }
 
-function registryRow(source, t) {
+function registryRow(source, t, isNext) {
   const connected = source.status === "connected";
   const nameCell = `<div class="src-row-name">
     ${mark(connected ? "filled" : "hollow", connected ? t("src.connected") : t("src.status.available"), { tone: connected ? "ok" : "mute" })}
-    <span class="src-row-txt"><b class="t-data">${esc(source.name)}</b><span class="src-what">${esc(source.what)}</span></span>
+    <span class="src-row-txt">
+      <b class="t-data">${esc(source.name)}${isNext ? `<span class="src-next t-label">${esc(t("src.nextUp"))}</span>` : ""}</b>
+      <span class="src-what">${esc(source.what)}</span>
+    </span>
   </div>`;
   const kindCell = `<span class="t-label ink-3">${esc(t(KIND_KEY[source.kind] || source.kind))}</span>`;
   const costCell = `<span class="t-data">${esc(t(COST_KEY[source.cost] || source.cost))}</span>`;
   const covCell = regionStrip(source);
   const chevCell = `<div class="chev-cell"><button type="button" class="btn-icon chev" data-action="src:expand" aria-expanded="false" aria-label="${esc(t("src.rowDetailsAria"))}">${CHEV_SVG}</button></div>`;
   return { id: source.id, cells: [nameCell, kindCell, costCell, covCell, chevCell], inset: registryExpansion(source, t) };
+}
+
+/** Two connected sources, four columns, and the second source's two
+ *  distinct jobs sit side by side where the difference is legible. A
+ *  source connected without authored role copy still renders, saying so,
+ *  rather than printing an empty row or an English placeholder. */
+function connectedRow(source, t) {
+  const role = ROLES[source.id];
+  const nameCell = `<div class="src-row-name">
+    ${mark("filled", t("src.connected"), { tone: "ok" })}
+    <span class="src-row-txt"><b class="t-data">${esc(source.name)}</b>
+      <span class="src-what">${esc(t(COST_KEY[source.cost] || source.cost))}</span></span>
+  </div>`;
+
+  if (!role) {
+    return {
+      id: source.id,
+      cells: [nameCell, `<p class="src-role-b">${esc(t("src.fallbackRole"))}</p>`, "", ""],
+    };
+  }
+
+  const accuracyCell = `${mark(role.grades ? "filled" : "hatch", t(role.grades ? "src.gradesTool" : "src.cannotGrade"), { tone: role.grades ? "ok" : "held" })}
+    <p class="src-role-b">${esc(t(`src.role.${source.id}.accuracy`))}</p>`;
+
+  return {
+    id: source.id,
+    cells: [
+      nameCell,
+      `<p class="src-role-b">${esc(t(`src.role.${source.id}.reads`))}</p>`,
+      `<p class="src-role-b">${esc(t(`src.role.${source.id}.assess`))}</p>`,
+      accuracyCell,
+    ],
+  };
 }
 
 function comparisonRow(now, wired, t) {
@@ -231,23 +379,62 @@ function ruleDialogBody(t) {
 
 export async function render(env, data, ctx) {
   const { t, lang } = ctx;
+  const all = data.sources || [];
   const regions = data.regions || Object.keys(REGION_SHORT);
+
+  const connected = all.filter((s) => s.status === "connected");
+  /* The obvious next work, derived rather than named: unwired sources
+     that produce volume evidence and cost little or nothing. */
+  const nextUp = all.filter((s) => s.status !== "connected" && s.kind === "volume" && CHEAP.has(s.cost));
+  const nextIds = new Set(nextUp.map((s) => s.id));
 
   const headerMeta = t("src.headerMeta", {
     connected: data.connected, total: data.total, free: data.free_and_unwired, regions: regions.length,
   });
 
   const cmpRows = (data.coverage_now || []).map((now, i) => comparisonRow(now, data.coverage_wired[i], t));
-  const registryRows = (data.sources || []).map((s) => registryRow(s, t));
+  const registryRows = all.map((s) => registryRow(s, t, nextIds.has(s.id)));
 
   const enNote = lang === "es" ? `<p class="claim-en t-data ink-4">${esc(t("src.enOnlyNote"))}</p>` : "";
+
+  /* ---- what is connected, and what each one is for ---- */
+  const connectedSection = section({
+    label: t("src.connLabel"),
+    title: t("src.connTitle"),
+    sub: esc(t("src.connSub")),
+    body: `
+      ${table({
+        cols: [
+          { key: "source", label: t("src.colSource"), width: 220 },
+          { key: "reads", label: t("src.colReads") },
+          { key: "assess", label: t("src.colInAssess") },
+          { key: "accuracy", label: t("src.colInAccuracy") },
+        ],
+        rows: connected.map((s) => connectedRow(s, t)),
+        size: "tall",
+      }, t)}
+      <p class="src-arg t-body">${esc(t("src.independence"))}</p>
+      <p class="foot t-data ink-3">${esc(t("src.edgarLimit"))}</p>
+    `,
+  });
+
+  /* ---- coverage now against wired ---- */
+  // Only claim the filing-registry causation where it is true by
+  // construction: the region reads strong today AND a connected source
+  // that produces volume evidence rates strong there.
+  const strongNow = (data.coverage_now || [])
+    .filter((c) => c.level === "strong" &&
+      connected.some((s) => s.kind === "volume" && s.coverage?.[c.region] === "strong"))
+    .map((c) => t(REGION_KEY[c.region] || c.region));
+  const strongLine = strongNow.length
+    ? `<p class="src-arg t-body">${esc(t("src.nowStrong", { regions: strongNow.join(", ") }))}</p>`
+    : "";
 
   const comparisonSection = section({
     label: t("src.eyebrow"),
     title: t("src.covTitle"),
     sub: esc(t("src.covSub")),
     body: `
-      <p class="t-body see-map"><a href="/coverage">${esc(t("src.seeMap"))}</a></p>
       ${table({
         cols: [
           { key: "region", label: t("src.colRegion") },
@@ -258,39 +445,50 @@ export async function render(env, data, ctx) {
         ],
         rows: cmpRows,
       }, t)}
+      ${strongLine}
       <p class="foot t-data ink-3">${esc(t("src.covFoot"))}</p>
     `,
   });
 
+  /* ---- the registry ---- */
+  const attackNames = nextUp
+    .map((s) => t("src.nameCost", { name: s.name, cost: t(COST_KEY[s.cost] || s.cost).toLowerCase() }))
+    .join(", ");
+  const attackLine = nextUp.length
+    ? t("src.attackOrder", { names: attackNames })
+    : t("src.attackNone");
+
   const registrySection = section({
     title: t("src.regTitle"),
-    sub: esc(t("src.regSub")),
+    sub: esc(t("src.regSub2", { total: data.total, connected: data.connected })),
     body: `
       ${table({
         cols: [
           { key: "source", label: t("src.colSource") },
           { key: "kind", label: t("src.colKind"), width: 120 },
           { key: "cost", label: t("src.colCost"), width: 100 },
-          { key: "cov", label: t("src.colCoverage"), width: 260 },
+          { key: "cov", label: t("src.colCoverage"), width: 320 },
           { key: "chev", label: "", width: 36 },
         ],
         rows: registryRows,
         size: "tall",
       }, t)}
-      <p class="foot t-data ink-3">${esc(t("src.regFoot"))}</p>
+      <p class="foot t-body">${esc(attackLine)}</p>
     `,
   });
 
+  /* ---- classification rules ---- */
   const rulesSection = section({
     title: t("rules.title"),
     sub: esc(t("rules.sub")),
     actions: `
-      <input type="text" id="rule-test-url" class="input mono" style="width:220px" placeholder="${esc(t("rules.testPh"))}" aria-label="${esc(t("rules.testLabel"))}" disabled>
+      <input type="text" id="rule-test-url" class="input mono" placeholder="${esc(t("rules.testPh"))}" aria-label="${esc(t("rules.testLabel"))}" disabled>
       ${btn(t("rules.add"), { kind: "primary", id: "rule-add-btn" })}
     `,
     body: `
       <p class="t-data ink-3" id="rule-test-result">${esc(t("rules.testEmpty"))}</p>
       <div id="rules-slot">${loadingRows()}</div>
+      <p class="foot t-data ink-3">${esc(t("rules.offLaw"))}</p>
     `,
   });
 
@@ -300,11 +498,13 @@ export async function render(env, data, ctx) {
         <h1 class="t-title">${esc(t("nav.sources"))}</h1>
         <span class="whead-meta">${esc(headerMeta)}</span>
       </div>
+      <div class="whead-a">${btn(t("src.seeMap"), { kind: "quiet", href: "/coverage" })}</div>
     </div>
-    <p class="claim t-body">${esc(t("src.note"))} ${t("src.lede")}</p>
+    <p class="claim t-body">${esc(t("src.note2", { connected: data.connected, total: data.total }))} ${t("src.lede")}</p>
     <p class="claim-sub t-data ink-2">${esc(t("verdict.abstainNote"))}</p>
     ${enNote}
 
+    ${connectedSection}
     ${comparisonSection}
     ${registrySection}
     ${rulesSection}
@@ -317,16 +517,17 @@ export async function render(env, data, ctx) {
 
 export function css() {
   return `
-.p-sources .claim { max-width: 64ch; margin-top: 16px; }
-.p-sources .claim-sub { max-width: 64ch; margin-top: 8px; }
-.p-sources .claim-en { max-width: 64ch; margin-top: 8px; }
-.p-sources .see-map { margin-top: 0; }
-.p-sources .foot { max-width: 72ch; margin-top: 12px; }
+.p-sources .claim { max-width: 72ch; margin-top: 16px; }
+.p-sources .claim-sub { max-width: 72ch; margin-top: 8px; }
+.p-sources .claim-en { max-width: 72ch; margin-top: 8px; }
+.p-sources .foot { max-width: 78ch; margin-top: 12px; }
+.p-sources .src-arg { max-width: 78ch; margin-top: 16px; color: var(--ink-2); }
+.p-sources .see-map { margin-top: 8px; }
 
 .p-sources .cmp-arrow { color: var(--ink-4); font-size: 14px; }
 .p-sources .cmp-arrow.up { color: var(--accent); }
 
-.p-sources .src-rs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.p-sources .src-rs { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
 .p-sources .src-rs-i .mk-w { font-size: 11px; }
 
 .p-sources .src-row-name { display: flex; align-items: flex-start; gap: 8px; }
@@ -337,6 +538,17 @@ export function css() {
   display: block; color: var(--ink-3); font-size: 12px; line-height: 1.4;
   max-width: 46ch;
 }
+/* the order-of-attack tag: a word, not a colour */
+.p-sources .src-next { color: var(--ink-3); margin-left: 8px; white-space: nowrap; }
+
+/* connected roles: prose cells, so the row grows with the copy and
+   Spanish is not clipped */
+.p-sources .src-role-b {
+  font: 400 13px/1.5 var(--sans); color: var(--ink-2);
+  max-width: 44ch; white-space: normal; margin: 0;
+}
+.p-sources .src-role-b + .src-role-b { margin-top: 6px; }
+.p-sources td .mk + .src-role-b { margin-top: 4px; }
 
 .p-sources .chev-cell { display: flex; justify-content: flex-end; }
 .p-sources .chev svg { transition: transform .18s var(--ease); }
@@ -349,10 +561,12 @@ export function css() {
 
 .p-sources .rule-tier { display: flex; flex-direction: column; gap: 3px; }
 
+.p-sources #rule-test-url { width: 320px; max-width: 40vw; }
 .p-sources #rule-test-result { margin-top: 0; min-height: 1.45em; }
 
 @media (max-width: 900px) {
   .p-sources .src-exp { grid-template-columns: 1fr; }
+  .p-sources #rule-test-url { width: 180px; }
 }
 `;
 }
@@ -414,14 +628,18 @@ export function script() {
     "</tr>";
   }
 
+  /* A disabled rule keeps its row, its order, its pattern and its menu.
+     It is dimmed and marked off, and the one thing its menu offers first
+     is Enable. Nothing here may ever hide a rule that is off: that is
+     how a rule once took its own undo off the screen with it. */
   function ruleRowHtml(r, idx, total) {
     var dim = !r.enabled;
     var tierLabel = r.label || r.tier;
     var tierCell = '<div class="rule-tier"><span class="t-data">' + esc(tierLabel) + "</span>" + (dim ? mk("hollow", Floor.t("rules.off"), "mute") : "") + "</div>";
     var matches = r.enabled ? fmtNum(r.matches || 0) : "\\u2013";
     var items = [];
-    items.push({ label: Floor.t("rules.edit") || "Edit", action: "rule:edit" });
     items.push({ label: r.enabled ? Floor.t("rules.disable") : Floor.t("rules.enable"), action: "rule:toggle" });
+    items.push({ label: Floor.t("rules.edit"), action: "rule:edit" });
     if (idx > 0) items.push({ label: Floor.t("rules.moveUp"), action: "rule:moveup" });
     if (idx < total - 1) items.push({ label: Floor.t("rules.moveDown"), action: "rule:movedown" });
     if (!r.builtin) { items.push("-"); items.push({ label: Floor.t("rules.delete"), action: "rule:delete", danger: true }); }

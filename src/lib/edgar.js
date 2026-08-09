@@ -59,33 +59,79 @@ export async function resolveCik(env, { domain, name }) {
   const rows = Object.values(index || {});
   if (!rows.length) return { ok: false, reason: "ticker index was empty" };
 
-  // The domain's own second-level label is usually the company name, and is a
-  // better key than a display name that may carry legal suffixes.
-  const stem = norm(String(domain || "").split(".")[0]);
+  const host = String(domain || "").toLowerCase().replace(/^www\./, "");
+  const stem = norm(host.split(".")[0]);
   const wanted = norm(name) || stem;
 
-  let best = null;
+  // Names shortlist. Domains decide.
+  //
+  // Matching on the name alone is wrong in both directions. "allegro.pl" is a
+  // Polish marketplace and "allegro" prefixes "ALLEGRO MICROSYSTEMS, INC.", a US
+  // semiconductor company, so a prefix rule returned the wrong CIK with high
+  // confidence and would have read a chip maker's 10-Q as ground truth. Demanding
+  // an exact name instead then lost Lululemon and Peloton, whose legal names
+  // carry extra words.
+  //
+  // The domain settles it, because a company states its own website on the cover
+  // of its filings. DoorDash's 10-Q contains "doordash.com". Allegro
+  // MicroSystems' 10-Q contains "allegromicro.com" and never "allegro.pl". So
+  // names only shortlist, and a candidate is accepted only once its own filing
+  // says the domain out loud.
+  const shortlist = [];
   for (const row of rows) {
     const t = norm(row.title);
     if (!t) continue;
-    let score = 0;
-    if (t === wanted || t === stem) score = 100;
-    else if (stem && (t.startsWith(stem + " ") || t === stem)) score = 80;
-    else if (wanted && t.startsWith(wanted + " ")) score = 70;
-    else if (stem && t.replace(/ /g, "") === stem.replace(/ /g, "")) score = 90;
-    if (score > (best?.score || 0)) best = { score, row };
+    const squash = (x) => x.replace(/ /g, "");
+    let rank = 0;
+    if (t === wanted || t === stem) rank = 100;
+    else if (squash(t) === squash(stem) || squash(t) === squash(wanted)) rank = 95;
+    else if (stem && (t.startsWith(stem + " ") || squash(t).startsWith(squash(stem)))) rank = 60;
+    else if (wanted && t.startsWith(wanted + " ")) rank = 55;
+    if (rank) shortlist.push({ rank, row });
   }
-  // Below a firm match this guesses, and a wrong CIK silently attributes one
-  // company's filings to another, which is worse than returning nothing.
-  if (!best || best.score < 70) return { ok: false, reason: `no confident CIK match for ${domain}` };
+  if (!shortlist.length) return { ok: false, reason: `no candidate named like ${domain}` };
+  shortlist.sort((a, b) => b.rank - a.rank);
 
-  return {
-    ok: true,
-    cik: String(best.row.cik_str).padStart(10, "0"),
-    name: best.row.title,
-    ticker: best.row.ticker,
-    confidence: best.score,
-  };
+  for (const cand of shortlist.slice(0, 4)) {
+    const cik = String(cand.row.cik_str).padStart(10, "0");
+    const confirmed = await filingMentionsDomain(env, cik, host);
+    if (confirmed) {
+      return {
+        ok: true, cik, name: cand.row.title, ticker: cand.row.ticker,
+        confidence: 100, confirmed_by: "domain in filing",
+      };
+    }
+  }
+
+  // Nothing confirmed by domain. Fall back to an EXACT name, which is still a
+  // defensible identification: a foreign private issuer's 20-F may simply not
+  // print its consumer domain, and MercadoLibre, Grab, Trip.com and Jumia were
+  // all lost this way before this branch existed. The bar stays exact, so
+  // "allegro" never reaches "allegro microsystems", and the weaker basis is
+  // reported rather than hidden.
+  const exact = shortlist.find((c) => c.rank === 100);
+  if (exact) {
+    return {
+      ok: true,
+      cik: String(exact.row.cik_str).padStart(10, "0"),
+      name: exact.row.title,
+      ticker: exact.row.ticker,
+      confidence: 80,
+      confirmed_by: "exact company name, domain not printed in the filing",
+    };
+  }
+  return { ok: false, reason: `no filing for a company named like ${domain} states that domain` };
+}
+
+/** Does this filer's own newest filing mention the domain. */
+async function filingMentionsDomain(env, cik, host) {
+  try {
+    const f = await recentFilings(env, cik, { forms: ["10-K", "10-Q", "20-F"], limit: 1 });
+    if (!f.ok || !f.filings.length) return false;
+    const r = await fetch(f.filings[0].url, { headers: { "user-agent": UA }, cf: { cacheTtl: 86400, cacheEverything: true } });
+    if (!r.ok) return false;
+    return (await r.text()).toLowerCase().includes(host);
+  } catch { return false; }
 }
 
 /** Recent filings for a CIK, newest first, restricted to forms worth reading. */
@@ -142,6 +188,7 @@ export async function primarySources(env, { domain, name }) {
     name: f.company || id.name,
     ticker: id.ticker,
     match_confidence: id.confidence,
+    confirmed_by: id.confirmed_by || null,
     filings: f.filings,
   };
 }

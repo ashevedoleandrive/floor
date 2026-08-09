@@ -225,6 +225,13 @@ When you force abstain, set revised_min, revised_mid and revised_max to -1.`;
 async function edgarBrief(env, { domain, name }) {
   try {
     const src = await primarySources(env, { domain, name });
+    // Remember the answer either way. Whether a merchant is reachable in EDGAR
+    // is a durable fact about the merchant, and the interface needs it to avoid
+    // offering an action that cannot succeed.
+    try {
+      await env.DB.prepare("UPDATE accounts SET sec_cik=?, sec_checked_at=datetime('now') WHERE domain=?")
+        .bind(src.ok ? src.cik : null, domain).run();
+    } catch { /* never let bookkeeping break a run */ }
     if (!src.ok || !src.filings.length) return null;
 
     for (const filing of src.filings.slice(0, 2)) {

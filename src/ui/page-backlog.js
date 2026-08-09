@@ -94,6 +94,7 @@ export const keys = {
   "bl.kbd.enter": { en: "Enter", es: "Intro" },
 
   /* card face */
+  "bl.openLink":    { en: "Open", es: "Abrir" },
   "bl.details":     { en: "Details", es: "Detalles" },
   "bl.detailsHide": { en: "Hide", es: "Ocultar" },
   "bl.notStated":   { en: "not stated", es: "sin indicar" },
@@ -195,12 +196,13 @@ function cardHtml(c, t) {
   const cls = `bl-card bl-s-${esc(c.status)}${archived ? " bl-arch" : ""}`;
   const detId = `bl-det-${esc(c.id)}`;
   const link = String(c.link || "").trim();
-  const linkText = /^https?:\/\//i.test(link) ? `${host(link)} ↗` : link;
   const external = /^https?:\/\//i.test(link);
+  // An internal path like "/" is not a name; the word is.
+  const linkText = external ? `${host(link)} ↗` : `${t("bl.openLink")} ↗`;
   const missing = !c.gap || !c.metric;
 
-  const line = (label, value) =>
-    `<p class="bl-l"><span class="bl-k t-label">${esc(label)}</span><span class="bl-v t-body">${
+  const line = (label, value, metric) =>
+    `<p class="bl-l${metric ? " bl-l-m" : ""}"><span class="bl-k t-label">${esc(label)}</span><span class="bl-v t-body">${
       value ? esc(value) : `<span class="ink-4">${esc(t("bl.notStated"))}</span>`
     }</span></p>`;
 
@@ -219,7 +221,7 @@ function cardHtml(c, t) {
     <div class="bl-det" id="${detId}" inert>
       <div class="bl-det-in">
         ${line(t("bl.gap"), c.gap)}
-        ${line(t("bl.moves"), c.metric)}
+        ${line(t("bl.moves"), c.metric, true)}
         <div class="bl-meta t-data">
           <span class="bl-own">${esc(c.owner || t("bl.unassigned"))}</span>
           ${link ? `<a class="bl-link" href="${esc(link)}"${external ? ` target="_blank" rel="noopener"` : ""}>${esc(linkText)}</a>` : ""}
@@ -312,10 +314,10 @@ export async function render(env, data, ctx) {
   /* One sentence, one key, with the key caps substituted after escaping.
      The sentinels are control characters, so esc() leaves them alone and
      no copy is assembled by concatenating keys (§3.11). */
-  const kbdLine = esc(t("bl.kbd", { lr: "", ud: "", enter: "" }))
-    .replace("", `<span class="kbd">← →</span>`)
-    .replace("", `<span class="kbd">↑ ↓</span>`)
-    .replace("", `<span class="kbd">${esc(t("bl.kbd.enter"))}</span>`);
+  const kbdLine = esc(t("bl.kbd", { lr: "\u0001", ud: "\u0002", enter: "\u0003" }))
+    .replace("\u0001", `<span class="kbd">\u2190 \u2192</span>`)
+    .replace("\u0002", `<span class="kbd">\u2191 \u2193</span>`)
+    .replace("\u0003", `<span class="kbd">${esc(t("bl.kbd.enter"))}</span>`);
 
   const state = JSON.stringify({ cards: all, areas }).replace(/</g, "\\u003c");
 
@@ -409,7 +411,10 @@ export function css() {
   .p-backlog .bl-l { display: flex; gap: 8px; margin-top: 12px; }
   .p-backlog .bl-k { color: var(--ink-3); flex: none; width: 72px; padding-top: 3px; }
   .p-backlog .bl-v { color: var(--ink-2); min-width: 0; }
+  /* the number it moves is the payoff, so it carries the darker ink */
+  .p-backlog .bl-l-m .bl-v { color: var(--ink-1); }
   .p-backlog .bl-meta { margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap; color: var(--ink-3); }
+  .p-backlog .bl-own { min-width: 0; }
   .p-backlog .bl-link { white-space: nowrap; }
 
   .p-backlog .bl-c-f { margin-top: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -421,8 +426,10 @@ export function css() {
   .p-backlog .bl-card.is-drag {
     position: fixed; z-index: 90; margin: 0;
     background: var(--white); box-shadow: var(--shadow);
-    cursor: grabbing; pointer-events: none; transition: none;
+    cursor: grabbing; transition: none;
   }
+  .p-backlog .bl-board.is-dragging { user-select: none; -webkit-user-select: none; }
+  .p-backlog .bl-board.is-dragging .bl-empty { display: none; }
   .p-backlog .bl-slot { border: 1px dashed var(--line-2); border-radius: 6px; }
   .p-backlog .bl-drop { display: none; }
   .p-backlog .bl-board.is-dragging .bl-drop {
@@ -530,9 +537,10 @@ export function script() {
 
   /* ---- card, column, board ---- */
 
-  function lineHtml(label, value) {
+  function lineHtml(label, value, metric) {
     var v = value ? esc(value) : '<span class="ink-4">' + esc(t("bl.notStated")) + '</span>';
-    return '<p class="bl-l"><span class="bl-k t-label">' + esc(label) + '</span><span class="bl-v t-body">' + v + '</span></p>';
+    var cls = metric ? "bl-l bl-l-m" : "bl-l";
+    return '<p class="' + cls + '"><span class="bl-k t-label">' + esc(label) + '</span><span class="bl-v t-body">' + v + '</span></p>';
   }
 
   function cardHtml(c) {
@@ -542,7 +550,7 @@ export function script() {
     var detId = "bl-det-" + c.id;
     var link = String(c.link || "").trim();
     var external = /^https?:\\/\\//i.test(link);
-    var linkText = external ? hostOf(link) + " \\u2197" : link;
+    var linkText = (external ? hostOf(link) : t("bl.openLink")) + " \\u2197";
     var missing = !c.gap || !c.metric;
 
     var marks = (archived ? mkHtml("hatch", t("bl.archivedWord"), "held") : "") +
@@ -555,7 +563,7 @@ export function script() {
     out += '<h3 class="bl-t t-section">' + esc(c.title) + '</h3>';
     out += '<div class="bl-det" id="' + detId + '"' + (open ? "" : " inert") + '><div class="bl-det-in">';
     out += lineHtml(t("bl.gap"), c.gap);
-    out += lineHtml(t("bl.moves"), c.metric);
+    out += lineHtml(t("bl.moves"), c.metric, true);
     out += '<div class="bl-meta t-data"><span class="bl-own">' + esc(c.owner || t("bl.unassigned")) + '</span>';
     if (link) out += '<a class="bl-link" href="' + esc(link) + '"' + (external ? ' target="_blank" rel="noopener"' : "") + '>' + esc(linkText) + '</a>';
     out += '</div></div></div>';
