@@ -367,7 +367,14 @@ async function main() {
     ];
     for (const [pass, label] of checks) pass ? ok(label) : bad(`demo invariant broken: ${label}`);
     const gold = JSON.parse((await get("/api/gold")).body);
-    gold.total === 22 ? ok(`gold set has 22 candidates`) : bad(`gold set has ${gold.total}, expected 22`);
+    // 11, not the seeded 22. Eleven rows were archived because they had no
+    // assessment and therefore nothing to grade against: a note that a company
+    // discloses is not an answer-key entry, and every one of them is still an
+    // account in the queue. The gold set now contains only what is gradable.
+    gold.total === 11 ? ok(`gold set has 11 gradable candidates`) : bad(`gold set has ${gold.total}, expected 11`);
+    gold.rows.every((r) => r.verified || !r.archived_at)
+      ? ok(`no archived rows leaking into the gold set`)
+      : bad(`archived rows are being returned as live gold candidates`);
   } catch (e) { warn(`demo invariants could not be checked: ${e.message}`); }
 
   console.log(`\n${"=".repeat(60)}`);
