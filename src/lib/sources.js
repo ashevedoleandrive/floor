@@ -23,7 +23,7 @@
 
 export const REGIONS = ["NORTHAMERICA", "EUROPE", "APAC", "LATAM", "AMEA"];
 
-export const SOURCES = [
+export const RAW_SOURCES = [
   {
     id: "web_search",
     name: "Web search with citations",
@@ -136,9 +136,33 @@ export const SOURCES = [
   },
 ];
 
+const REQUIREMENTS = {
+  web_search:      { secret: null,                    adapter: true  },  // included with the model
+  sec_edgar:       { secret: null,                    adapter: true  },  // public, no key needed
+  companies_house: { secret: "COMPANIES_HOUSE_KEY",   adapter: false },  // key held, reader not built
+  eu_registries:   { secret: null,                    adapter: false },
+};
+
+function deriveStatus(src, env) {
+  const req = REQUIREMENTS[src.id];
+  if (!req) return { status: src.status, holds_key: false, has_adapter: false };
+  const holds_key = req.secret ? Boolean(env && env[req.secret]) : true;
+  const has_adapter = !!req.adapter;
+  // "key_held" means a credential was required and we have it, with no reader
+  // built yet. A source that needs no credential can never be in that state, so
+  // reporting it there would invent a distinction the operator cannot act on.
+  const status = holds_key && has_adapter ? "connected"
+    : req.secret && holds_key ? "key_held"
+    : "available";
+  return { status, holds_key, has_adapter, needs_secret: req.secret || null };
+}
+
 /** Per-region rollup: how well could Floor qualify a merchant here, and with what. */
-export function coverageByRegion(onlyConnected = false) {
-  const pool = onlyConnected ? SOURCES.filter((s) => s.status === "connected") : SOURCES;
+export function coverageByRegion(onlyConnected = false, env = null) {
+  // Reads the derived status too, so a newly wired source lights its regions
+  // without anyone editing this file.
+  const all = RAW_SOURCES.map((s) => ({ ...s, ...deriveStatus(s, env) }));
+  const pool = onlyConnected ? all.filter((s) => s.status === "connected") : all;
   const rank = { strong: 3, partial: 2, weak: 1, none: 0 };
   return REGIONS.map((region) => {
     const volume = pool.filter((s) => s.kind === "volume" || s.kind === "evidence");
@@ -154,7 +178,22 @@ export function coverageByRegion(onlyConnected = false) {
   });
 }
 
-export function sourceSummary() {
+/**
+ * What a source needs before it can honestly claim to be connected.
+ *
+ * Status used to be a hand-typed constant, so adding a credential changed
+ * nothing on screen and the page could sit there claiming a source was unwired
+ * while its key was in the vault. Bryan caught it: "isn't this shit supposed to
+ * be dynamic, or do you expect me to tell you every time I add a source?"
+ *
+ * Two things have to be true, and they are different: the CREDENTIAL has to
+ * exist, and an ADAPTER has to exist that actually reads the source. Holding a
+ * key with nothing to call it is not connection, and saying so would be the
+ * same overclaim in a new place. So each is reported separately and the status
+ * is computed from both.
+ */
+export function sourceSummary(env) {
+  const SOURCES = RAW_SOURCES.map((s) => ({ ...s, ...deriveStatus(s, env) }));
   const connected = SOURCES.filter((s) => s.status === "connected");
   return {
     sources: SOURCES,
@@ -162,8 +201,8 @@ export function sourceSummary() {
     connected: connected.length,
     total: SOURCES.length,
     free_and_unwired: SOURCES.filter((s) => s.status === "available" && s.cost === "free").length,
-    coverage_now: coverageByRegion(true),
-    coverage_wired: coverageByRegion(false),
+    coverage_now: coverageByRegion(true, env),
+    coverage_wired: coverageByRegion(false, env),
     note: "Two sources are connected: open web search, and the SEC's own filing store. The rest are the upgrade path, and the trust layer above them does not change when they are added.",
   };
 }

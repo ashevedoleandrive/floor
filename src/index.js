@@ -43,9 +43,14 @@ const html = (body) =>
  */
 const PAGES = {
   "/":         { mod: pageQueue,    data: (env) => buildQueue(env) },
-  "/coverage": { mod: pageCoverage, data: (env) => computeCoverage(env) },
+  "/coverage": { mod: pageCoverage, data: async (env) => ({
+    ...(await computeCoverage(env)),
+    // The registry, with status derived from what is actually wired, so the map
+    // and its rail stop reading a hand-typed constant.
+    sourceRegistry: sourceSummary(env),
+  }) },
   "/settings": { mod: pageSettings, data: (env) => settingsData(env) },
-  "/sources":  { mod: pageSources,  data: () => sourceSummary() },
+  "/sources":  { mod: pageSources,  data: (env) => sourceSummary(env) },
   "/evals":    { mod: pageEvals,    data: async (env) => {
     const [evals, gold, q] = [await listEvals(env), await listGold(env), await buildQueue(env)];
     // Every unverified row carries the links Floor already found, so verifying
@@ -146,7 +151,7 @@ export default {
       if (p === "/api/gold")     return json(await listGold(env));
       if (p === "/api/evals/run" && request.method === "POST") return json(await runEval(env));
       if (p === "/api/evals")    return json(await listEvals(env));
-      if (p === "/api/sources")  return json(sourceSummary());
+      if (p === "/api/sources")  return json(sourceSummary(env));
       if (p === "/api/coverage") return json(await computeCoverage(env));
       if (p === "/api/source-rules" && request.method === "POST") return json(await saveRule(env, request));
       if (p === "/api/source-rules") return json(await listRules(env));

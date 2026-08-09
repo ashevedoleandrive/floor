@@ -30,7 +30,7 @@
    --------------------------------------------------------------------- */
 
 import { esc, mark, level, statRow, section, table, btn } from "./kit.js";
-import { coverageByRegion, SOURCES } from "../lib/sources.js";
+import { coverageByRegion, RAW_SOURCES } from "../lib/sources.js";
 
 export const meta = {
   route: "/coverage",
@@ -357,7 +357,11 @@ const LEVEL_N = { strong: 3, partial: 2, weak: 1, none: 0 };
 /* The two connected sources, read from the registry rather than named in
    copy, so this page cannot go stale the way its predecessor did when
    EDGAR was wired and every sentence still said "one source". */
-const CONNECTED = SOURCES.filter((s) => s.status === "connected");
+// Status is derived per request now, so this page reads it from the payload the
+// router passes rather than from the registry's declared constant. Falls back to
+// the raw list only so a stale caller cannot blank the section.
+const connectedFrom = (data) =>
+  (data?.sources || RAW_SOURCES).filter((s) => s.status === "connected");
 /* A source that reads filed documents rather than searching for
    commentary about them. Kind is the registry's own word for it. */
 const READS_FILINGS = (s) => s.kind === "volume" || s.kind === "truth";
@@ -543,8 +547,8 @@ function fieldSvg(data, T, wired, ownersMap, outlineOnly) {
  *  is the registry's own coverage rating per source, so a connected
  *  source that reaches nothing here says "none" out loud rather than
  *  being quietly dropped. */
-function connectedBlock(T, region) {
-  const items = CONNECTED.map((s) => {
+function connectedBlock(T, region, connected) {
+  const items = connected.map((s) => {
     const lvl = s.coverage?.[region] || "none";
     return `<li class="cv-conn">
       <span class="cv-conn-name">${esc(s.name)}</span>
@@ -552,7 +556,7 @@ function connectedBlock(T, region) {
     </li>`;
   }).join("");
 
-  const filingHere = CONNECTED.some((s) => READS_FILINGS(s) && (LEVEL_N[s.coverage?.[region]] ?? 0) >= 2);
+  const filingHere = connected.some((s) => READS_FILINGS(s) && (LEVEL_N[s.coverage?.[region]] ?? 0) >= 2);
   const note = filingHere ? T("cvg.connFiling") : T("cvg.connGeneral");
 
   return `<div class="cv-block">
@@ -623,7 +627,7 @@ function liftList(T, r) {
   </div>`;
 }
 
-function regionPanel(T, r, minSample) {
+function regionPanel(T, r, minSample, connected) {
   const m = r.measured;
   const small = m.sample_too_small;
   const stateMark = small
@@ -659,7 +663,7 @@ function regionPanel(T, r, minSample) {
     </header>
     <div class="cv-mark">${stateMark}</div>
     ${stats}
-    ${connectedBlock(T, r.region)}
+    ${connectedBlock(T, r.region, connected)}
     ${gradeLine(T, m)}
     ${causesList(T, m)}
     ${liftList(T, r)}
@@ -804,6 +808,10 @@ export async function render(env, data, ctx) {
   const om = data.overall.measured;
   const dayOneEmpty = om.assessed === 0;
   const minSample = data.min_sample ?? 5;
+  // Derived per request, so wiring a source changes this page without anyone
+  // editing a constant. Falls back to the registry only so a stale caller
+  // cannot blank the section entirely.
+  const connected = connectedFrom(data.sourceRegistry || data);
 
   const caption = esc(T("cvg.modeCaption")) +
     (dayOneEmpty ? " " + esc(T("cvg.modeCaptionEmpty")) : "");
@@ -812,7 +820,7 @@ export async function render(env, data, ctx) {
     overallPanel(T, data, wired, dayOneEmpty),
     ...ORDER.map((code) => {
       const r = (data.regions || []).find((x) => x.region === code);
-      return r ? regionPanel(T, r, minSample) : "";
+      return r ? regionPanel(T, r, minSample, connected) : "";
     }),
   ].join("\n");
 

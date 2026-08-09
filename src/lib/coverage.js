@@ -19,7 +19,7 @@
  * decides what the data shows belongs in code, not in a prompt.
  */
 
-import { REGIONS, SOURCES, loadSourceRules, classifySource, TIERS } from "./sources.js";
+import { REGIONS, RAW_SOURCES as SOURCES, loadSourceRules, classifySource, TIERS } from "./sources.js";
 import { queueRows, getSettings } from "./db.js";
 
 // Below this many assessed accounts, a percentage is noise dressed as a fact.
