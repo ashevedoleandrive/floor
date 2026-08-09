@@ -64,6 +64,9 @@ function segment(items, keyFn, labelFn, minSample = 2) {
       // Below the sample floor a rate is noise wearing a percentage sign, so it
       // is withheld rather than printed small. Same rule the coverage map uses.
       sample_too_small: !enough,
+      // How many more would make this sliceable, so the page can say what is
+      // needed rather than announcing that it is withholding something.
+      need: enough ? 0 : minSample - scored.length,
       floor_correct: enough ? scored.filter((r) => r.floor_correct).length : null,
       in_band: enough ? scored.filter((r) => r.in_band).length : null,
     };
@@ -93,6 +96,7 @@ export function calibration(items) {
       in_band: rows.length ? rows.filter((r) => r.in_band).length : null,
       claimed: rows.length ? rows.reduce((a, r) => a + r.confidence, 0) / rows.length : null,
       sample_too_small: rows.length < 3,
+      need: rows.length >= 3 ? 0 : 3 - rows.length,
     };
   });
 }

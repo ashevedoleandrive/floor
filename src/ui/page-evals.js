@@ -48,7 +48,9 @@ export const keys = {
   },
   "evals.headMetaAll": { en: "{a} of {b} established", es: "{a} de {b} establecidas" },
   "evals.truthBase":   { en: "Truth established", es: "Verdades establecidas" },
-  "evals.rateWithheld": { en: "n = {n}, a rate would be noise", es: "n = {n}, una tasa sería ruido" },
+  "evals.rateWithheld": { en: "{n} checked so far, too few for a rate", es: "{n} verificadas hasta ahora, muy pocas para una tasa" },
+  // Spanish agrees in number, so one is not "1 verificadas".
+  "evals.rateWithheldOne": { en: "1 checked so far, too few for a rate", es: "1 verificada hasta ahora, muy pocas para una tasa" },
   "evals.reachNote": { en: "{w} more need an assessment first", es: "{w} más necesitan primero un análisis" },
   "evals.reachAll":  { en: "every candidate is gradeable", es: "todos los candidatos son calificables" },
 
@@ -82,7 +84,7 @@ export const keys = {
   "evals.segLabel": { en: "Reliability by slice", es: "Fiabilidad por segmento" },
   "evals.segTitle": { en: "Where the accuracy holds", es: "Dónde se sostiene la precisión" },
   "evals.segSub": {
-    en: "one blended percentage hides which class is failing, so the rate reports per slice, and a slice too small to mean anything is withheld rather than printed small",
+    en: "one blended percentage hides which class is failing, so the rate reports per slice, and a slice says how many more it needs rather than printing a rate it has not earned",
     es: "un porcentaje mezclado esconde cuál clase está fallando, así que la tasa se reporta por segmento, y un segmento demasiado pequeño para significar algo se retiene en lugar de imprimirse pequeño",
   },
   "evals.dim.derivation": { en: "How derived", es: "Cómo se derivó" },
@@ -109,7 +111,8 @@ export const keys = {
   "evals.cal.high": { en: "0.85 and above", es: "0.85 o más" },
   "evals.cal.mid":  { en: "0.70 to 0.85", es: "0.70 a 0.85" },
   "evals.cal.low":  { en: "below 0.70", es: "menos de 0.70" },
-  "evals.withheld": { en: "withheld, n = {n}", es: "retenida, n = {n}" },
+  "evals.withheld": { en: "{k} more to rate", es: "faltan {k} para calificar" },
+  "evals.withheldOne": { en: "1 more to rate", es: "falta 1 para calificar" },
   "evals.neverMeasured": { en: "never measured", es: "sin medir" },
   "evals.calNote": {
     en: "When Floor claims 0.90, the truth should land inside its range about nine times in ten. Until that is measured, the confidence number is an opinion.",
@@ -467,7 +470,7 @@ function segRows(segments, t) {
           `<td colspan="2">${mark("dashed", t("evals.neverMeasured"), { tone: "ghost" })}</td>`;
       } else if (s.sample_too_small) {
         cells = `<td class="num mono">${Number(s.scored) || 0}</td><td class="num mono">${Number(s.abstained) || 0}</td>` +
-          `<td colspan="2">${mark("hatch", t("evals.withheld", { n: Number(s.scored) || 0 }), { tone: "held" })}</td>`;
+          `<td colspan="2">${mark("hatch", (s.need === 1 ? t("evals.withheldOne") : t("evals.withheld", { k: s.need || 1 })), { tone: "held" })}</td>`;
       } else {
         cells = `<td class="num mono">${Number(s.scored)}</td><td class="num mono">${Number(s.abstained) || 0}</td>` +
           `<td><span class="mono">${esc(pct(s.floor_correct / s.scored))}</span></td>` +
@@ -484,7 +487,7 @@ function calRows(calibration, t) {
     const name = ["high", "mid", "low"].includes(b.key) ? esc(t(`evals.cal.${b.key}`)) : esc(b.label || b.key);
     let obs;
     if (!b.n) obs = mark("dashed", t("evals.neverMeasured"), { tone: "ghost" });
-    else if (b.sample_too_small) obs = mark("hatch", t("evals.withheld", { n: b.n }), { tone: "held" });
+    else if (b.sample_too_small) obs = mark("hatch", (b.need === 1 ? t("evals.withheldOne") : t("evals.withheld", { k: b.need || 1 })), { tone: "held" });
     else obs = `<span class="mono">${esc(pct(b.in_band / b.n))}</span>`;
     const claimed = b.claimed != null ? `<span class="mono">${Number(b.claimed).toFixed(2)}</span>` : GHOST;
     return `<tr><td>${name}</td><td class="num mono">${Number(b.n) || 0}</td><td class="num">${claimed}</td><td>${obs}</td></tr>`;
@@ -560,7 +563,7 @@ export async function render(env, data, ctx) {
   const headStat = (numer, denom) =>
     denom >= MIN_HEADLINE_N ? pct(numer / denom) : `${numer}/${denom}`;
   const headNote = (numer, denom, bigNote) =>
-    denom >= MIN_HEADLINE_N ? bigNote : t("evals.rateWithheld", { n: denom });
+    denom >= MIN_HEADLINE_N ? bigNote : ((denom) === 1 ? t("evals.rateWithheldOne") : t("evals.rateWithheld", { n: denom }));
 
   const meter = statRow([
     { label: t("eval.floorCorrect"),
@@ -1110,7 +1113,7 @@ export function script() {
           const name = known.indexOf(k) >= 0 ? esc(t(SLICE_KEY[dim](k))) : esc((s && s.label) || k);
           let cells;
           if (!s) cells = '<td class="num mono ink-4">&ndash;</td><td class="num mono ink-4">&ndash;</td><td colspan="2">' + mk("dashed", t("evals.neverMeasured"), "ghost") + '</td>';
-          else if (s.sample_too_small) cells = '<td class="num mono">' + (Number(s.scored) || 0) + '</td><td class="num mono">' + (Number(s.abstained) || 0) + '</td><td colspan="2">' + mk("hatch", t("evals.withheld", { n: Number(s.scored) || 0 }), "held") + '</td>';
+          else if (s.sample_too_small) cells = '<td class="num mono">' + (Number(s.scored) || 0) + '</td><td class="num mono">' + (Number(s.abstained) || 0) + '</td><td colspan="2">' + mk("hatch", (s.need === 1 ? t("evals.withheldOne") : t("evals.withheld", { k: s.need || 1 })), "held") + '</td>';
           else cells = '<td class="num mono">' + Number(s.scored) + '</td><td class="num mono">' + (Number(s.abstained) || 0) + '</td><td><span class="mono">' + pctOf(s.floor_correct / s.scored) + '</span></td><td><span class="mono">' + pctOf(s.in_band / s.scored) + '</span></td>';
           rows += '<tr' + (idx === 0 ? ' class="ev-grp"' : '') + '><td class="ev-dimlbl t-label">' + (idx === 0 ? esc(dimLabel) : '') + '</td><td>' + name + '</td>' + cells + '</tr>';
         });
@@ -1122,7 +1125,7 @@ export function script() {
         const name = ["high", "mid", "low"].indexOf(b.key) >= 0 ? esc(t("evals.cal." + b.key)) : esc(b.label || b.key);
         let obs;
         if (!b.n) obs = mk("dashed", t("evals.neverMeasured"), "ghost");
-        else if (b.sample_too_small) obs = mk("hatch", t("evals.withheld", { n: b.n }), "held");
+        else if (b.sample_too_small) obs = mk("hatch", (b.need === 1 ? t("evals.withheldOne") : t("evals.withheld", { k: b.need || 1 })), "held");
         else obs = '<span class="mono">' + pctOf(b.in_band / b.n) + '</span>';
         const claimed = b.claimed != null ? '<span class="mono">' + Number(b.claimed).toFixed(2) + '</span>' : GHOST;
         return '<tr><td>' + name + '</td><td class="num mono">' + (Number(b.n) || 0) + '</td><td class="num">' + claimed + '</td><td>' + obs + '</td></tr>';
@@ -1185,9 +1188,9 @@ export function script() {
       if (sub) sub.textContent = t("eval.runMeta", { n: res.n, date: new Date().toISOString().slice(0, 10) });
       const headStat = (a, b) => b >= MIN_HEADLINE_N ? pctOf(a / b) : a + "/" + b;
       setStat(0, res.n_scored != null ? headStat(res.floor_correct, res.n_scored) : null,
-        res.n_scored >= MIN_HEADLINE_N ? t("eval.ofScored", { a: res.floor_correct, b: res.n_scored }) : t("evals.rateWithheld", { n: res.n_scored }));
+        res.n_scored >= MIN_HEADLINE_N ? t("eval.ofScored", { a: res.floor_correct, b: res.n_scored }) : ((res.n_scored) === 1 ? t("evals.rateWithheldOne") : ((res.n_scored) === 1 ? t("evals.rateWithheldOne") : t("evals.rateWithheld", { n: res.n_scored }))));
       setStat(1, res.n_scored != null ? headStat(res.in_band, res.n_scored) : null,
-        res.n_scored >= MIN_HEADLINE_N ? t("eval.ofN", { a: res.in_band, b: res.n_scored }) : t("evals.rateWithheld", { n: res.n_scored }));
+        res.n_scored >= MIN_HEADLINE_N ? t("eval.ofN", { a: res.in_band, b: res.n_scored }) : ((res.n_scored) === 1 ? t("evals.rateWithheldOne") : ((res.n_scored) === 1 ? t("evals.rateWithheldOne") : t("evals.rateWithheld", { n: res.n_scored }))));
       setStat(2, res.n != null ? headStat(res.abstained, res.n) : null, t("eval.reported"));
       if (res.segments) rebuildSeg(res.segments);
     }

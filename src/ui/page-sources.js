@@ -1,15 +1,23 @@
 /* Floor · page-sources.js — the Sources page (route /sources)
    ---------------------------------------------------------------------
-   Two things on one page: the source registry (ten sources, one wired,
-   what each unlocks and where it stops per region) and the classification
-   rules that decide which tier every claim's source is graded at.
+   Three things on one page: what is connected today (two sources, and
+   SEC EDGAR plays two distinct roles that this page is responsible for
+   distinguishing), the source registry (ten sources, what each unlocks
+   and where it stops per region), and the classification rules that
+   decide which tier every claim's source is graded at.
 
    The durable claim this page exists to make: provenance, adversarial
    checking, abstention and a measured accuracy score make any source safe
    to sell on. The trust layer does not change when the sources improve.
-   That sentence is carried by existing authored copy (src.note + src.lede
-   + verdict.abstainNote), reused rather than rewritten, per the contract's
-   "reuse an existing key" rule.
+   That sentence is carried by src.lede + verdict.abstainNote, reused
+   rather than rewritten, per the contract's "reuse an existing key" rule.
+
+   Deliberately unused i18n keys: src.note ("One source is connected"),
+   src.regSub ("One is live") and src.regFoot (still lists SEC EDGAR as
+   unwired) predate EDGAR's connection and describe an architecture that
+   no longer exists. i18n.js is router-owned, so this page replaces them
+   with src.note2 / src.regSub2 / src.regFoot2 from its own keys object
+   instead of overriding the shared dictionary.
 
    Data: render() receives GET /api/sources synchronously (data param).
    Classification rules come from a separate client-side fetch of
