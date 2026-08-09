@@ -287,7 +287,10 @@ async function main() {
     const q = JSON.parse((await get("/api/queue")).body);
     const top = Math.max(...q.rows.map((r) => Number(r.txn_max || r.txn_mid || 0)));
     const home = html["/"] || "";
-    const widths = [...home.matchAll(/class="bar"[^>]*style="left:([\d.]+)%;width:([\d.]+)%/g)]
+    // Matches both vocabularies: `bar` is the legacy markup, `g-bar` the kit's.
+    // Without this the check goes quiet the moment the queue migrates, which is
+    // exactly when it stops being able to catch the regression it exists for.
+    const widths = [...home.matchAll(/class="g?-?bar"[^>]*style="left:([\d.]+)%;\s*width:([\d.]+)%/g)]
       .map((m) => Number(m[1]) + Number(m[2]));
     const pinned = widths.filter((w) => w >= 99.9).length;
     if (!widths.length) warn("no gauge bars found on the queue, cannot check the ceiling");
