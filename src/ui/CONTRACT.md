@@ -54,9 +54,9 @@ export function css(): string;
 export function script(): string;
 
 /** Return the <main> body only. The router wraps it in the shell.
- *  env  — Worker env, for D1 reads if the router did not pre-fetch
- *  data  — whatever the router passes for this route (see below)
- *  ctx   — { lang, t }  always present, never optional */
+ *  env   Worker env, for D1 reads if the router did not pre-fetch
+ *  data  whatever the router passes for this route (see below)
+ *  ctx   { lang, t }  always present, never optional */
 export async function render(env, data, ctx): Promise<string>;
 ```
 

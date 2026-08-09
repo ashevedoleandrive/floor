@@ -296,6 +296,110 @@ give a design brief an escape hatch back to the status quo.
 
 ---
 
+## 17. A check that never fetched a page reported that page as fine
+
+The Settings screen shipped to production with its entire layout class family
+undefined. Every label, hint and consequence line collapsed into run-on text. The
+QA gate read 120 passing at the time.
+
+The gate was not fetching `/settings`. It was never in the page list.
+
+Generalising the check, every class the markup repeats must be defined in some
+stylesheet, immediately found the same defect on four more pages: twenty
+occurrences of one class on the queue, twenty-two of another on Accuracy,
+fourteen in total. None of it errored, 404'd or logged.
+
+**Transferable:** an unchecked surface is where the bug goes. And when a bug is
+found, generalise it into a rule before fixing the instance, because the instance
+is almost never alone.
+
+---
+
+## 18. Three of my own checks cried wolf
+
+While building the gate that catches wolves, I shipped three false positives: a
+404 reported on a page whose links were fine (the scanner was reading href
+fragments out of inlined JavaScript), and two classes reported as unstyled that
+are pure binding hooks (the detector recognised two of the four ways the client
+selects elements).
+
+Each one would have sent someone debugging working code.
+
+**Transferable:** a check that cries wolf gets ignored, and an ignored check is
+worse than no check, because it also carries the false comfort of coverage. Tune
+the false positives out the moment they appear.
+
+---
+
+## 19. Write the file the moment it is coherent
+
+Nine page builds ran concurrently and every one of them was killed mid-run by a
+spend limit. Eight survived intact. One produced nothing at all.
+
+The difference was a single instruction, added only because an earlier run had
+already died holding all its work in memory: write each file to disk as soon as
+it is coherent, then refine it there. The eight that had it lost nothing. The one
+that did not lose everything had been told the same thing and had not reached the
+writing stage.
+
+**Transferable:** long work should leave durable artefacts continuously, not at
+the end. Anything that batches its output to the final step is one interruption
+away from having done nothing.
+
+---
+
+## 20. Delegated work reports success it did not achieve
+
+Three separate cases in one session. An agent reported that production was left
+exactly as found, when its test had stamped the top account as touched and
+dropped it from rank 1 to rank 17. Another left two merchants archived, so the
+live dataset silently read 36 accounts, 16 assessed, 4 abstains. A third reported
+zero em dashes and zero page reloads in files that contained both, in comments,
+which the gate correctly strips and my first grep did not.
+
+Two of those were caught by looking at the rendered page. The third was caught by
+checking rather than believing.
+
+**Transferable:** verify the final state yourself. A report is a claim. This is
+the same law as the abstain enforcement and the `mark()` throw: anything that
+depends on someone remembering to do the right thing eventually meets someone who
+did not.
+
+---
+
+## 21. The bugs that mattered most were only findable by clicking
+
+None of these could be caught by any static check, and all of them were found by
+a person or an agent actually using the interface:
+
+- The rule dialog's Save button did nothing, silently, every time. An HTML5 step
+  constraint on the order field rejected every real value, so the browser blocked
+  submit before any JavaScript ran. No error, no console message, the dialog just
+  sat there.
+- The Impact page's ROI figure was off by one, always low, and always on exactly
+  the round numbers a person reads aloud. It printed 999 for 1,000 and 1,299 for
+  1,300, because freed time was converted into hours and multiplied back into
+  minutes.
+- A double percent sign in Spanish, from an i18n key that appended a symbol a
+  formatter had already added.
+- The bulk action bar survived with a stale count when every selected row left
+  the page.
+
+**Transferable:** static checks find whole classes of defect cheaply, and they
+find none of these. Budget for someone to use the thing.
+
+---
+
+## 22. Verify against production data, not against whatever renders
+
+The coverage map rendered perfectly against a local database with no assessments:
+every region correctly hatched, honest empty state, legend intact. That proved
+the empty path and nothing else. The case the page exists for, some regions lit,
+one hatched below the sample floor, two dark, only appears against real data.
+
+**Transferable:** a page that renders is not a page that works. Test against the
+data the thing will actually be seen with, especially the rows that are ugly.
+
 ## Standing rules that came out of this
 
 1. Print the raw response structure before trusting any accessor over it.
@@ -313,3 +417,10 @@ give a design brief an escape hatch back to the status quo.
 12. A harness's failure report is a claim. Check the real state before debugging.
 13. Name the references and the tells in a design brief. "Best" is not a bar.
 14. State regional coverage before recommending a source, not after.
+15. An unchecked surface is where the bug goes. Check every surface you serve.
+16. Generalise a bug into a rule before fixing the instance. It is never alone.
+17. A check that cries wolf gets ignored. Tune out false positives immediately.
+18. Long work writes durable artefacts continuously, never only at the end.
+19. A delegated report is a claim. Verify the final state yourself.
+20. Budget for someone to click it. Static checks find none of the worst bugs.
+21. Test against the data it will be seen with, especially the ugly rows.

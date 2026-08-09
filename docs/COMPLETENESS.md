@@ -1,5 +1,34 @@
 # Completeness audit
 
+**Status as of 2026-08-09: closed.** Every operation marked missing below now
+exists in the interface. The tables are kept as written rather than updated to
+green, because the record of what was absent is more useful than a page of ticks,
+and because the pattern in it is the thing worth remembering.
+
+What was built to close it:
+
+| Gap | Now |
+|---|---|
+| Account edit and delete | Edit name, region, owner and last touched, inline. Archive and restore. |
+| `last_touched_at` uneditable | Editable on the queue and the account page. It feeds cool-down scoring. |
+| Assessment re-run and delete | Remove a run and the previous one takes over. Restore it. Full history per account. |
+| Gold figure permanent | Correct it, un-verify it, add a candidate, archive one. Verifying is refused without both a figure and its source URL. |
+| Backlog card frozen | Move between idea, building and live as a one-click action. Edit and archive. |
+| Rule edit and reorder | Both, in the interface. Order decides which rule wins. |
+| No undo anywhere | Nothing hard-deletes. Archiving stamps a timestamp, un-archiving clears it, and destructive actions confirm and offer undo. |
+| Bulk select and assess | Selection with a bulk bar: assess, set owner, export, archive. |
+| No deep links | Queue filters, band, region and sort all live in the URL. |
+| Setting reset and history | Reset to default, and a change log recording what each setting was before. |
+
+Two defects of exactly this class were found *while* closing it, both in list
+queries that kept counting archived rows toward their totals, in the backlog and
+the gold set. Two page authors found them independently. That is what a shared
+defect looks like when nobody owns the file it lives in, and it is the reason the
+rule below is written the way it is.
+
+---
+
+
 Every object a user can act on, every operation that should exist, and what is
 actually there. Written after this critique:
 

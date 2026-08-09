@@ -203,6 +203,83 @@ assets).
 
 ---
 
+## D14 · One kit, and pages may not restyle it
+
+Every surface is one file that composes shared primitives and owns only CSS
+scoped to its own page class. A page that wants a primitive to look different
+reports a kit bug rather than overriding it locally.
+
+The alternative, letting each page style what it needs, is how the first build
+ended up with nine species of status pill and fourteen classes emitted into the
+markup that no stylesheet defined. Those were invisible to the browser and to
+every check we had. The constraint is what stops the interface drifting back
+into a component-library texture, and the QA gate enforces it rather than
+review discipline.
+
+**Cost:** a page author occasionally needs a primitive that does not exist and
+has to stop and say so. That is the intended friction.
+
+## D15 · State is a mark plus a word, enforced by throwing
+
+`mark()` raises an error when called without a label. A state rendered in colour
+alone cannot reach production, because the check runs at render time rather than
+in a review comment.
+
+This is the same move as D5. Abstention is enforced in code rather than
+requested in a prompt; colour-blind-safe state is enforced in code rather than
+requested in a design doc. Anything that depends on a human remembering will
+eventually meet a human who does not.
+
+## D16 · Uncertainty is a shape, not a label
+
+Confidence is the solidity of the range bar. An abstain is a dashed hollow slot
+where the gauge would be. A region below the sample floor renders hatched and can
+never receive a fill, whatever its rate. Anything projected rather than measured
+renders dashed, because solid ink is a promise that a human can click through to
+a source.
+
+The test this has to pass: **delete all the text, and you can still see which
+numbers are solid, which are shaky, and which are refusals.** Before the rebuild
+the answer was no, because every state was written in a coloured capsule. Both
+encodings existed and neither was legible at a glance.
+
+## D17 · Nothing hard-deletes
+
+Archiving stamps a timestamp, un-archiving clears it. No operator action
+destroys a row.
+
+Forced by a bug worth stating plainly: disabling a classification rule filtered
+it out of the list the operator was reading, which put the Enable button out of
+reach. The data was intact in the database the entire time, and that was worth
+nothing to the person clicking it. **An action is only reversible if it is
+reversible in the interface.**
+
+The rule generalises past that one bug. `last_touched_at` feeds cool-down scoring
+and could only be set at assess time, so an account suppressed on a wrong date
+stayed wrongly suppressed. A mistyped gold-set figure was permanent, silently
+poisoning the one claim the tool makes about itself.
+
+**Cost:** every list query has to exclude archived rows, and we got that wrong
+twice, in the backlog and gold-set loaders, where archived rows kept counting
+toward totals. Two page authors found it independently, which is what a shared
+defect looks like when nobody owns the file it lives in.
+
+## D18 · The demo dataset has invariants, and they are checked
+
+The QA gate asserts the handful of facts a live demo stands on: which account
+ranks first and at what volume, how many accounts exist, how many are assessed,
+how many abstained, where the floor and cool-down sit.
+
+Added after a verification run stamped the top account as touched. Nothing
+errored, and the tool was behaving correctly, because a touched account is
+suppressed by design. But the most impressive number in the dataset silently
+dropped from rank 1 to rank 17 and read as cooling down, and the process that
+did it reported the dataset had been left exactly as found.
+
+Self-reported cleanup is not a check. Anything that would be embarrassing on a
+shared screen and looks completely normal in the interface needs an assertion
+somewhere that fails loudly.
+
 ## Open, and honestly so
 
 - **Coverage, not accuracy, is the constraint.** Public filers are well served;
