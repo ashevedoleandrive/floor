@@ -45,6 +45,15 @@ import {
    gaps (add / edit / un-verify / archive / restore) and their copy. */
 
 export const keys = {
+  "evals.pendingUnconf": {
+    en: "Their expected metrics are unconfirmed: they were seeded from prior knowledge and nothing here has opened a filing to check them.",
+    es: "Sus métricas esperadas no están confirmadas: se sembraron desde conocimiento previo y nada aquí ha abierto un informe para comprobarlas.",
+  },
+  "evals.metricUnconfirmed": {
+    en: "Metrics marked ? were seeded from prior knowledge, not read off a filing. Verifying a row confirms its metric as a side effect, because you opened the document.",
+    es: "Las métricas marcadas con ? se sembraron desde conocimiento previo, no se leyeron de un informe. Verificar una fila confirma su métrica de paso, porque abriste el documento.",
+  },
+
   "evals.pendingLabel": { en: "Not checkable yet", es: "Aún no verificables" },
   "evals.pendingTitle": {
     en: "{n} merchants that disclose, but have never been assessed",
@@ -163,8 +172,22 @@ const merchantCellHtml = (g) =>
   `<b class="t-body">${esc(g.name || g.domain)}</b>` +
   `<div class="mono ink-3 ev-dom">${esc(g.domain)}</div>`;
 
-const metricCellHtml = (g) =>
-  g.disclosed_metric ? esc(g.disclosed_metric) : `<span class="ink-4">&ndash;</span>`;
+/**
+ * What the merchant is expected to disclose.
+ *
+ * These strings were hand-seeded from prior knowledge, not read off a filing, so
+ * on an unverified row this is an expectation and not a fact. Printing it under
+ * a "disclosed metric" heading as though it were established would be an
+ * unsourced claim inside the accuracy harness, which is the exact thing this
+ * page exists to refuse. Once a human verifies the row they have opened the
+ * source, so the expectation has been confirmed and the qualifier comes off.
+ */
+const metricCellHtml = (g) => {
+  if (!g.disclosed_metric) return `<span class="ink-4">&ndash;</span>`;
+  const text = esc(g.disclosed_metric);
+  return g.verified ? text
+    : `${text}<span class="ev-unconf" title="seeded from prior knowledge, not read off a filing"> ?</span>`;
+};
 
 const monthlyCellHtml = (g) =>
   g.disclosed_value != null ? `<span class="mono">${esc(count(g.disclosed_value))}</span>` : `<span class="ink-4">&ndash;</span>`;
@@ -383,7 +406,7 @@ export async function render(env, data, ctx) {
         <span class="mono ink-3 ev-prog-n" id="ev-gold-prog-n">${esc(t("gold.progress", { a: verifiedActive, b: verifiedActive + verifiable }))}</span>
       </div>
       ${goldTable}
-      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: reachable }))}</p>`,
+      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: reachable }))} ${esc(t("evals.metricUnconfirmed"))}</p>`,
   });
 
   const verifyDlg = dialog({
@@ -485,7 +508,7 @@ export async function render(env, data, ctx) {
           <span class="dom">${esc(g.domain)}</span>
           <span class="met">${esc(g.disclosed_metric || "")}</span>
         </a>`).join("")}</div>
-      <p class="ev-blind">${esc(t("evals.pendingFoot", { c: pendingCost }))}</p>`,
+      <p class="ev-blind">${esc(t("evals.pendingFoot", { c: pendingCost }))} ${esc(t("evals.pendingUnconf"))}</p>`,
   }) : "";
 
   return `
@@ -571,6 +594,8 @@ export function css() {
   .p-evals .ev-next-pred { font: 500 13px/1.5 var(--mono); color: var(--ink-3); white-space: nowrap; }
   .p-evals .ev-blind { font-size: 13px; color: var(--ink-3); margin-top: 12px; }
   .p-evals .ev-sat { font-size: 14px; color: var(--ink-2); }
+  /* The metric on an unverified row is an expectation, not a reading. */
+  .p-evals .ev-unconf { color: var(--held); font-weight: 560; cursor: help; }
   .p-evals .ev-pend { display: grid; gap: 1px; background: var(--line-1); border-block: 1px solid var(--line-1); }
   .p-evals .ev-pend-row {
     background: var(--bg); padding: 11px 0; text-decoration: none; color: inherit;
