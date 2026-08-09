@@ -103,7 +103,7 @@ framework, no build step, no external assets. The whole thing renders offline.
 
 ### How the interface is put together
 
-One router, ten surfaces, one shared vocabulary.
+One router, nine surfaces, one shared vocabulary.
 
 `src/index.js` holds a `PAGES` registry mapping each route to a page module and
 that route's data loader, so **a page module never queries the database**. Every
