@@ -1,135 +1,187 @@
 /* Floor · page-evals.js — the Accuracy page, route /evals
    ---------------------------------------------------------------------
-   §4.6 of DESIGN-SPEC.md. Read the whole spec before touching this file;
-   §3.10 (empty-state doctrine) governs more of this page than any other,
-   because no eval has ever run and every gold-set row is unverified. That
-   is not a placeholder to design around, it is the state this page ships
-   in, so the empty and unverified cases ARE the primary design, not a
-   fallback.
+   Rebuilt 2026-08-09 from what the page now actually does, not from the
+   order its pieces were bolted on.
 
-   The single hardest law on this page: a gold-set row does not count
-   toward accuracy until a human opens the source and types the figure.
-   Verification is refused by the API when the figure or the source is
-   missing (HTTP 400, {ok:false, field, error}), and that refusal is
-   rendered as a normal path under the field it names, never as a generic
-   error banner.
+   The argument this page makes changed underneath its old copy. Truth
+   used to be a human typing a figure; it is now extracted from the
+   merchant's own regulator filing, with the verbatim sentence stored and
+   shown and the conversion to a monthly rate run in code. So the page is
+   built around three kinds of content and nothing else:
 
-   Data shape this page expects (documented since the router wires this,
-   not this file): `data` is either
-     { evals: { latest, items }, gold: { rows, total, verified } }
-   or the two shapes flattened onto one object (both are detected below),
-   matching the two source endpoints named in CONTRACT.md's appendix:
-   GET /api/evals and GET /api/gold.
+   - MEASUREMENTS: the latest eval, and its accuracy split by derivation,
+     region, size band and claimed confidence (all of which the API
+     already returned and none of which was rendered anywhere).
+   - REFUSALS: a rate on a sample too small to mean anything is withheld
+     rather than printed small, exactly as the coverage map does; slices
+     never measured say so; merchants with no prediction are ungradeable,
+     not unverified.
+   - PROVENANCE: every established truth shows the sentence it came from,
+     the arithmetic that converted it, and the filing it lives in.
 
-   Two supplementary reads happen directly against `env.DB` inside
-   render(), guarded so a missing binding degrades to "unknown" rather
-   than throwing (CONTRACT.md: "env — Worker env, for D1 reads if the
-   router did not pre-fetch data"). Neither endpoint exists yet to supply
-   this, so a page-level read is the honest way to avoid inventing it:
-     - which gold-set domains have at least one live assessment, so a row
-       whose merchant was never assessed says so instead of silently
-       looking wrong (the "cross-link law", §4.6).
-     - none of this touches an endpoint this file does not own.
+   Five row states exist in production today and all five are designed:
+   established by extraction (quote + arithmetic + link), established by
+   a person, establishable now (assessed, filings found), not assessable
+   (no estimate to grade against, so the action is assess), and archived.
+
+   Data: `data` is { evals: {latest, items, segments}, gold: {rows},
+   sources: {domain: [links]}, suggest, cost_per_account } per the router.
+   One guarded read-only D1 query (assessedDomains) tells apart "never
+   assessed" from "assessed, but its filings gave no links".
    --------------------------------------------------------------------- */
 
 import {
-  esc, num, count, money, pct, dateISO, host,
-  mark, level, gauge, statRow, section, well,
-  table, rowMenu, btn, field, dialog, tabs,
+  esc, num, count, pct, dateISO, host,
+  mark, statRow, section, table, rowMenu, btn, field, dialog,
 } from "./kit.js";
 
 /* ============================== copy ================================ */
-/* Reuse first: nav.accuracy, eval.*, gold.*, action.cancel/add/save,
-   unit.txnMo, ev.source, kit.* already say most of this page. What
-   follows is only what genuinely does not exist yet: the completeness
-   gaps (add / edit / un-verify / archive / restore) and their copy. */
+/* Reuse first: nav.accuracy, eval.*, gold.*, ev.source, unit.txnMo,
+   action.*, common.notSaved, queue.notAssessed already say most of it.
+   Everything below is genuinely new to this page. */
 
 export const keys = {
-  "evals.establishing": { en: "Reading filings\u2026", es: "Leyendo informes\u2026" },
-  "evals.establishOk": { en: "{d} established at {n} per month", es: "{d} establecido en {n} por mes" },
-  "evals.establishFail": { en: "No figure found: {n}", es: "No se encontró la cifra: {n}" },
+  /* header + meter */
+  "evals.headMeta": {
+    en: "{a} of {b} established · {w} more need an assessment first",
+    es: "{a} de {b} establecidas · {w} más necesitan primero un análisis",
+  },
+  "evals.headMetaAll": { en: "{a} of {b} established", es: "{a} de {b} establecidas" },
+  "evals.truthBase":   { en: "Truth established", es: "Verdades establecidas" },
+  "evals.rateWithheld": { en: "n = {n}, a rate would be noise", es: "n = {n}, una tasa sería ruido" },
+  "evals.reachNote": { en: "{w} more need an assessment first", es: "{w} más necesitan primero un análisis" },
+  "evals.reachAll":  { en: "every candidate is gradeable", es: "todos los candidatos son calificables" },
 
-  "evals.byExtraction": { en: "Extracted from the filing", es: "Extraído del informe" },
-  "evals.byHuman": { en: "Read by a person", es: "Leído por una persona" },
+  /* latest eval */
+  "evals.emptyBody": {
+    en: "No eval has run. Establish truth for at least one assessed merchant below, then run it: stored predictions are graded against the filings, and nothing is re-run to look better.",
+    es: "No se ha corrido ninguna evaluación. Establece la verdad de al menos un comercio ya analizado aquí abajo y córrela: las predicciones guardadas se califican contra los informes, y nada se vuelve a correr para verse mejor.",
+  },
+  "evals.missAbove": {
+    en: "{d}: the disclosed truth of {t} sits {p} above the predicted midpoint of {m}.",
+    es: "{d}: la verdad publicada de {t} queda {p} por encima del punto medio predicho de {m}.",
+  },
+  "evals.missBelow": {
+    en: "{d}: the disclosed truth of {t} sits {p} below the predicted midpoint of {m}.",
+    es: "{d}: la verdad publicada de {t} queda {p} por debajo del punto medio predicho de {m}.",
+  },
+  "evals.missFloorOk": {
+    en: "The floor call was still right, and the floor call is what the queue runs on.",
+    es: "El veredicto de umbral siguió siendo correcto, y ese veredicto es lo que mueve la cola.",
+  },
+  "evals.missFloorBad": {
+    en: "The floor call was wrong here too.",
+    es: "El veredicto de umbral también falló aquí.",
+  },
+  "evals.missWhy": {
+    en: "A truth carries its date; an estimate assembled from older filings will trail a growing merchant. The gap is reported at full size rather than smoothed, because an eval that only ever agrees is not a check.",
+    es: "La verdad lleva su fecha; una estimación armada con informes anteriores queda detrás de un comercio que crece. La brecha se reporta a tamaño completo en lugar de suavizarse, porque una evaluación que siempre está de acuerdo no es un control.",
+  },
+
+  /* reliability by slice */
+  "evals.segLabel": { en: "Reliability by slice", es: "Fiabilidad por segmento" },
+  "evals.segTitle": { en: "Where the accuracy holds", es: "Dónde se sostiene la precisión" },
+  "evals.segSub": {
+    en: "one blended percentage hides which class is failing, so the rate reports per slice, and a slice too small to mean anything is withheld rather than printed small",
+    es: "un porcentaje mezclado esconde cuál clase está fallando, así que la tasa se reporta por segmento, y un segmento demasiado pequeño para significar algo se retiene en lugar de imprimirse pequeño",
+  },
+  "evals.dim.derivation": { en: "How derived", es: "Cómo se derivó" },
+  "evals.dim.region":     { en: "Region", es: "Región" },
+  "evals.dim.magnitude":  { en: "Size band", es: "Rango de tamaño" },
+  "evals.dim.calibration": { en: "Calibration", es: "Calibración" },
+  "evals.colSlice":    { en: "Slice", es: "Segmento" },
+  "evals.colScored":   { en: "Scored", es: "Calificadas" },
+  "evals.colAbst":     { en: "Abstained", es: "Abstenciones" },
+  "evals.colClaimed":  { en: "Claimed avg", es: "Promedio declarado" },
+  "evals.colObserved": { en: "Observed in range", es: "Observado en rango" },
+  "evals.calBucket":   { en: "Confidence claimed", es: "Confianza declarada" },
+  "evals.seg.direct_count":     { en: "Read off a disclosure", es: "Leída de un informe" },
+  "evals.seg.from_gmv_with_aov": { en: "Derived from dollar volume", es: "Derivada del volumen en dólares" },
+  "evals.r.NORTHAMERICA": { en: "North America", es: "Norteamérica" },
+  "evals.r.EUROPE": { en: "Europe", es: "Europa" },
+  "evals.r.APAC":   { en: "APAC", es: "APAC" },
+  "evals.r.LATAM":  { en: "LATAM", es: "LATAM" },
+  "evals.r.AMEA":   { en: "AMEA", es: "AMEA" },
+  "evals.band.over_50m":    { en: "above 50M/mo", es: "más de 50M/mes" },
+  "evals.band.5m_to_50m":   { en: "5M to 50M/mo", es: "5M a 50M/mes" },
+  "evals.band.500k_to_5m":  { en: "500k to 5M/mo", es: "500k a 5M/mes" },
+  "evals.band.under_500k":  { en: "under 500k/mo", es: "menos de 500k/mes" },
+  "evals.cal.high": { en: "0.85 and above", es: "0.85 o más" },
+  "evals.cal.mid":  { en: "0.70 to 0.85", es: "0.70 a 0.85" },
+  "evals.cal.low":  { en: "below 0.70", es: "menos de 0.70" },
+  "evals.withheld": { en: "withheld, n = {n}", es: "retenida, n = {n}" },
+  "evals.neverMeasured": { en: "never measured", es: "sin medir" },
+  "evals.calNote": {
+    en: "When Floor claims 0.90, the truth should land inside its range about nine times in ten. Until that is measured, the confidence number is an opinion.",
+    es: "Cuando Floor declara 0.90, la verdad debería caer dentro de su rango unas nueve de cada diez veces. Hasta que eso se mida, el número de confianza es una opinión.",
+  },
+  "evals.blindNote": {
+    en: "{r}: nothing assessed there discloses a figure to check against, so the gap is in the data, not in the effort.",
+    es: "{r}: nada de lo analizado allí publica una cifra comprobable, así que la brecha está en los datos, no en el esfuerzo.",
+  },
+
+  /* the truth base */
+  "evals.truthTitle": { en: "Truth comes from the filings", es: "La verdad sale de los informes" },
+  "evals.truthSub": {
+    en: "the merchant's own regulator filing is read, the sentence is stored verbatim, and the conversion to a monthly rate runs in code. A person typing a figure is the exception, kept for what an extractor cannot read",
+    es: "se lee el informe regulatorio del propio comercio, la oración se guarda textual y la conversión a tasa mensual corre en código. Una persona escribiendo la cifra es la excepción, reservada para lo que un extractor no puede leer",
+  },
+  "evals.checkFirst": {
+    en: "Establish {names} first: each covers a slice the measured set is blind to.",
+    es: "Establece primero {names}: cada uno cubre un segmento que el conjunto medido no alcanza.",
+  },
+  "evals.rowGain": { en: "would newly measure: {g}", es: "mediría por primera vez: {g}" },
+  "evals.colEst":  { en: "Established", es: "Establecida" },
+  "evals.byExtraction":   { en: "from the filing", es: "del informe" },
+  "evals.byHuman":        { en: "read by a person", es: "leída por una persona" },
+  "evals.notEstablished": { en: "not established", es: "sin establecer" },
   "evals.perMonth": { en: "month", es: "mes" },
   "evals.establish": { en: "Establish from filings", es: "Establecer desde informes" },
-
-  "evals.pendingUnconf": {
-    en: "Their expected metrics are unconfirmed: they were seeded from prior knowledge and nothing here has opened a filing to check them.",
-    es: "Sus métricas esperadas no están confirmadas: se sembraron desde conocimiento previo y nada aquí ha abierto un informe para comprobarlas.",
+  "evals.enterByHand": { en: "Enter figure by hand", es: "Ingresar la cifra a mano" },
+  "evals.verbatimSrc": {
+    en: "filing text, quoted in its original English",
+    es: "texto del informe, citado en su inglés original",
   },
-  "evals.metricUnconfirmed": {
-    en: "Metrics marked ? were seeded from prior knowledge, not read off a filing. Verifying a row confirms its metric as a side effect, because you opened the document.",
-    es: "Las métricas marcadas con ? se sembraron desde conocimiento previo, no se leyeron de un informe. Verificar una fila confirma su métrica de paso, porque abriste el documento.",
+  "evals.flagWord": { en: "reconciliation flag", es: "alerta de conciliación" },
+  "evals.metricNote": {
+    en: "On rows not yet established, the metric is an expectation seeded from prior knowledge. Establishing the row confirms it, because the filing was opened.",
+    es: "En las filas aún sin establecer, la métrica es una expectativa sembrada desde conocimiento previo. Establecer la fila la confirma, porque se abrió el informe.",
   },
+  "evals.establishOk":   { en: "{d} established at {n} per month", es: "{d} establecido en {n} por mes" },
+  "evals.establishFail": { en: "No figure found: {n}", es: "No se encontró la cifra: {n}" },
 
-  "evals.pendingLabel": { en: "Not checkable yet", es: "Aún no verificables" },
+  /* not yet gradeable */
+  "evals.pendingLabel": { en: "Not yet gradeable", es: "Aún no calificables" },
   "evals.pendingTitle": {
-    en: "{n} merchants that disclose, but have never been assessed",
-    es: "{n} comercios que publican cifras, pero nunca se han analizado",
+    en: "{n} disclose a figure but have no estimate to grade against",
+    es: "{n} publican una cifra pero no tienen estimación que calificar",
   },
-  "evals.pendingSub": {
-    en: "these are not unverified, they are ungradeable: there is no estimate to compare a disclosure against until Floor has run",
-    es: "no están sin verificar, no se pueden calificar: no hay estimación con la cual comparar una cifra hasta que Floor los analice",
+  "evals.pendingBody": {
+    en: "Until Floor has assessed a merchant there is no prediction to compare a filing against, so the action here is assess, not verify. Assessing all of them costs about {c} at the measured rate.",
+    es: "Hasta que Floor analice un comercio no hay predicción que comparar contra un informe, así que la acción aquí es analizar, no verificar. Analizarlos todos cuesta unos {c} al costo medido.",
   },
-  "evals.pendingFoot": {
-    en: "Assessing all of them costs about {c} at the measured rate, and each one then becomes checkable.",
-    es: "Analizarlos todos cuesta unos {c} al costo medido, y cada uno pasa a ser verificable.",
-  },
+  "evals.assessFromQueue": { en: "assess from the queue", es: "analizar desde la cola" },
+  "evals.noLinks": { en: "assessed, no filing links found", es: "analizada, sin enlaces a informes" },
 
-  "evals.progressSplit": {
-    en: "{a} of {b} verified, {w} more waiting on an assessment",
-    es: "{a} de {b} verificadas, {w} más esperan un análisis",
-  },
-  "evals.waitingNote": {
-    en: "{w} candidates have no prediction yet, so there is nothing to compare them against. Assess them from the queue and they become checkable.",
-    es: "{w} candidatos aún no tienen estimación, así que no hay con qué compararlos. Analízalos desde la cola y pasan a ser verificables.",
-  },
-
-  "evals.nextLabel": { en: "What to check next", es: "Qué verificar ahora" },
-  "evals.nextTitle": {
-    en: "Three that would tell you something new",
-    es: "Tres que dirían algo que aún no sabes",
-  },
-  "evals.nextSub": {
-    en: "only merchants Floor has already assessed, and only where checking one covers a dimension the verified set is blind to",
-    es: "solo comercios que Floor ya analizó, y solo cuando verificar uno cubre una dimensión que el conjunto verificado no alcanza",
-  },
-  "evals.floorSays": { en: "Floor says {n}/mo", es: "Floor estima {n}/mes" },
-  "evals.saturated": {
-    en: "Nothing left to check would tell you something new. Every region, reliability class and size band the gold set can reach is already covered.",
-    es: "Verificar algo más no diría nada nuevo. Cada región, clase de fiabilidad y rango de tamaño que el conjunto puede alcanzar ya está cubierto.",
-  },
-  "evals.blindRegions": {
-    en: "No candidate can measure {r}. That gap is in the data, not in the effort: nothing assessed there discloses a public figure to check against.",
-    es: "Ningún candidato puede medir {r}. Esa brecha está en los datos, no en el esfuerzo: nada analizado allí publica una cifra comprobable.",
-  },
-
-  "evals.status":       { en: "Status",   es: "Estado" },
-  "evals.verified":      { en: "Verified",     es: "Verificada" },
-  "evals.unverified":    { en: "Unverified",   es: "Sin verificar" },
-  "evals.notAssessed":   { en: "Not yet assessed", es: "Aún no evaluada" },
-  "evals.assessFromQueue": { en: "assess from the queue", es: "evalúala desde la cola" },
-
+  /* dialogs (create / verify-by-hand / correct) */
   "evals.addCandidate": { en: "Add candidate", es: "Agregar candidato" },
   "evals.addDlgTitle":  { en: "Add a gold-set candidate", es: "Agrega un candidato al set de referencia" },
   "evals.addDlgHint": {
-    en: "A candidate does not count toward accuracy until it is verified with a figure and a source.",
-    es: "Un candidato no cuenta para la precisión hasta que se verifica con una cifra y una fuente.",
+    en: "A candidate does not count toward accuracy until its figure is established from a filing or entered by a person with the source.",
+    es: "Un candidato no cuenta para la precisión hasta que su cifra se establece desde un informe o la ingresa una persona con la fuente.",
   },
   "evals.domain":     { en: "Domain",   es: "Dominio" },
   "evals.name":       { en: "Name",     es: "Nombre" },
-  "evals.period":     { en: "Period",  es: "Período" },
+  "evals.period":     { en: "Period",   es: "Período" },
   "evals.sourceUrl":  { en: "Source URL", es: "URL de la fuente" },
   "evals.sourceNote": { en: "Where to find it", es: "Dónde encontrarla" },
   "evals.phDomain":   { en: "Domain, for example asos.com", es: "Dominio, por ejemplo asos.com" },
   "evals.phName":     { en: "Name (optional)", es: "Nombre (opcional)" },
   "evals.phNote":     { en: "Note for whoever verifies it (optional)", es: "Nota para quien la verifique (opcional)" },
-
   "evals.editTitle": { en: "Edit a gold-set figure", es: "Edita una cifra del set de referencia" },
   "evals.editHint": {
-    en: "Correct the figure or the source. This does not change whether the row is verified.",
-    es: "Corrige la cifra o la fuente. Esto no cambia si la fila está verificada.",
+    en: "Correct the figure or the source. This does not change whether the row is established.",
+    es: "Corrige la cifra o la fuente. Esto no cambia si la fila está establecida.",
   },
   "evals.verifyConfirm": { en: "Verify", es: "Verificar" },
   "evals.verifyEffect": {
@@ -137,31 +189,30 @@ export const keys = {
     es: "Se requieren la cifra y la fuente. Así la herramienta se niega a fabricar confianza, no es un error.",
   },
 
+  /* row menus */
   "evals.menuEdit":     { en: "Edit figure",       es: "Editar cifra" },
   "evals.menuUnverify": { en: "Un-verify",         es: "Quitar verificación" },
   "evals.menuView":     { en: "View account",      es: "Ver cuenta" },
   "evals.menuRemove":   { en: "Remove candidate",  es: "Quitar candidato" },
   "evals.menuRestore":  { en: "Restore",           es: "Restaurar" },
 
-  "evals.toastVerified":   { en: "{domain} verified",              es: "{domain} verificado" },
+  /* toasts + field errors */
+  "evals.toastVerified":   { en: "{domain} verified",                  es: "{domain} verificado" },
   "evals.toastUnverified": { en: "Verification removed from {domain}", es: "Se quitó la verificación de {domain}" },
-  "evals.toastCorrected":  { en: "{domain} corrected",             es: "{domain} corregido" },
-  "evals.toastAdded":      { en: "{domain} added to the gold set", es: "{domain} se agregó al set de referencia" },
-  "evals.toastRemoved":    { en: "{domain} removed",               es: "{domain} eliminado" },
-  "evals.toastRestored":   { en: "{domain} restored",              es: "{domain} restaurado" },
-  "evals.toastEvalRun":    { en: "Eval run, {n} scored",           es: "Evaluación corrida, {n} calificadas" },
-
-  "evals.errNeedValue":   { en: "A row cannot be verified without a disclosed figure.", es: "Una fila no se puede verificar sin una cifra publicada." },
-  "evals.errNeedSource":  { en: "A row cannot be verified without the source you read it in.", es: "Una fila no se puede verificar sin la fuente donde la leíste." },
-  "evals.errBadValue":    { en: "Enter a positive number of transactions per month.", es: "Ingresa un número positivo de transacciones por mes." },
-  "evals.errBadDomain":   { en: "Enter a domain, for example asos.com.", es: "Ingresa un dominio, por ejemplo asos.com." },
-  "evals.errDuplicate":   { en: "This domain is already a candidate.", es: "Este dominio ya es un candidato." },
-  "evals.errGeneric":     { en: "Could not save. Try again.", es: "No se pudo guardar. Intenta de nuevo." },
-  "evals.errNoVerified":  { en: "Verify at least one gold-set row before running the eval.", es: "Verifica al menos una fila del set de referencia antes de correr la evaluación." },
-  "evals.errNoAssessments": { en: "Assess the verified gold-set accounts from the queue first.", es: "Primero evalúa desde la cola las cuentas verificadas del set de referencia." },
+  "evals.toastCorrected":  { en: "{domain} corrected",                 es: "{domain} corregido" },
+  "evals.toastAdded":      { en: "{domain} added to the gold set",     es: "{domain} se agregó al set de referencia" },
+  "evals.toastRemoved":    { en: "{domain} removed",                   es: "{domain} eliminado" },
+  "evals.toastRestored":   { en: "{domain} restored",                  es: "{domain} restaurado" },
+  "evals.toastEvalRun":    { en: "Eval run, {n} scored",               es: "Evaluación corrida, {n} calificadas" },
+  "evals.errNeedValue":  { en: "A row cannot be verified without a disclosed figure.", es: "Una fila no se puede verificar sin una cifra publicada." },
+  "evals.errNeedSource": { en: "A row cannot be verified without the source you read it in.", es: "Una fila no se puede verificar sin la fuente donde la leíste." },
+  "evals.errBadValue":   { en: "Enter a positive number of transactions per month.", es: "Ingresa un número positivo de transacciones por mes." },
+  "evals.errBadDomain":  { en: "Enter a domain, for example asos.com.", es: "Ingresa un dominio, por ejemplo asos.com." },
+  "evals.errDuplicate":  { en: "This domain is already a candidate.", es: "Este dominio ya es un candidato." },
+  "evals.errGeneric":    { en: "Could not save. Try again.", es: "No se pudo guardar. Intenta de nuevo." },
+  "evals.errNoVerified": { en: "Establish at least one gold-set figure before running the eval.", es: "Establece al menos una cifra del set de referencia antes de correr la evaluación." },
+  "evals.errNoAssessments": { en: "Assess the established gold-set accounts from the queue first.", es: "Primero analiza desde la cola las cuentas establecidas del set de referencia." },
   "evals.retry": { en: "Retry", es: "Reintentar" },
-
-  "evals.goldNoneNote": { en: "0 of {b} verified, human sign-off pending", es: "0 de {b} verificadas, falta la firma humana" },
 };
 
 /* ============================== route ================================ */
@@ -172,106 +223,124 @@ export const meta = {
   titleKey: "nav.accuracy",
 };
 
-/* ========================= shared cell builders ====================== */
-/* Used by render() (server) and mirrored, field for field, in script()'s
-   client JS (browser) so a mutation can patch or append a row without a
-   reload. Keep the two in lockstep if either changes. */
+/* ======================= shared constants =========================== */
 
-const merchantCellHtml = (g) =>
+/** Below this the headline meter prints counts instead of a rate. The
+ *  per-slice floors live in src/lib/accuracy.js and arrive as
+ *  `sample_too_small`, which is honored as authoritative. */
+const MIN_HEADLINE_N = 5;
+
+const GHOST = `<span class="ink-4">&ndash;</span>`;
+
+const DOTS_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="11.5" cy="7" r="1.3"/></svg>`;
+
+/* The known slice vocabulary, enumerated so the grid can say "never
+   measured" about a slice the data has never seen. Anything the API
+   returns outside this list still renders, under its own label. */
+const SLICES = {
+  by_derivation: ["direct_count", "from_gmv_with_aov"],
+  by_region: ["NORTHAMERICA", "EUROPE", "APAC", "LATAM", "AMEA"],
+  by_magnitude: ["over_50m", "5m_to_50m", "500k_to_5m", "under_500k"],
+};
+const SLICE_KEY = {
+  by_derivation: (k) => `evals.seg.${k}`,
+  by_region: (k) => `evals.r.${k}`,
+  by_magnitude: (k) => `evals.band.${k}`,
+};
+
+/* suggestGold() composes its gain sentences in English; these maps parse
+   them back to slice keys so the annotation renders in both languages.
+   A phrase that stops parsing simply drops out, it never renders raw. */
+const GAIN_REGION = { "North America": "NORTHAMERICA", "Europe": "EUROPE", "APAC": "APAC", "LATAM": "LATAM", "AMEA": "AMEA" };
+const GAIN_BAND = { "above 50M/mo": "over_50m", "5M to 50M/mo": "5m_to_50m", "500k to 5M/mo": "500k_to_5m", "under 500k/mo": "under_500k" };
+
+function gainSlices(gains, t) {
+  const out = [];
+  for (const g of gains || []) {
+    let m;
+    if ((m = /^first (.+) row in the gold set$/.exec(g)) && GAIN_REGION[m[1]]) out.push(t(`evals.r.${GAIN_REGION[m[1]]}`));
+    else if (/read off a disclosure/.test(g)) out.push(t("evals.seg.direct_count"));
+    else if (/derived from dollar volume/.test(g)) out.push(t("evals.seg.from_gmv_with_aov"));
+    else if ((m = /^first row (.+)$/.exec(g)) && GAIN_BAND[m[1]]) out.push(t(`evals.band.${GAIN_BAND[m[1]]}`));
+  }
+  return out;
+}
+
+/* ==================== truth arithmetic, displayed ==================== */
+/* "970M / quarter (Q2 2026) → 323.3M / month". The magnitude word is not
+   stored on the row, so it is recovered from the stored numbers: if
+   disclosed × months ÷ raw lands exactly on a power of a thousand, the
+   suffix is printed; otherwise the raw figure prints as stored. Code
+   only, no judgement. */
+const MONTHS_PER = { month: 1, quarter: 3, year: 12 };
+
+function arithParts(g) {
+  if (g.raw_value == null || g.disclosed_value == null) return null;
+  const months = MONTHS_PER[String(g.raw_period || "").toLowerCase().trim()];
+  let raw = Number(g.raw_value).toLocaleString("en-US");
+  if (months) {
+    const mag = (g.disclosed_value * months) / g.raw_value;
+    for (const [v, sfx] of [[1e9, "B"], [1e6, "M"], [1e3, "k"]]) {
+      if (Math.abs(mag - v) / v < 0.02) { raw = Number(g.raw_value).toLocaleString("en-US") + sfx; break; }
+    }
+  }
+  const per = String(g.period || "").split(" (")[0];
+  return { raw, rawPeriod: String(g.raw_period || ""), per };
+}
+
+/* ======================= server cell builders ======================== */
+/* Mirrored, field for field, in script()'s client JS so mutations can
+   rebuild the region without a reload. Keep the two in lockstep. */
+
+const merchantCellHtml = (g, gains, t) =>
   `<b class="t-body">${esc(g.name || g.domain)}</b>` +
-  `<div class="mono ink-3 ev-dom">${esc(g.domain)}</div>`;
+  `<div class="mono ink-3 ev-dom">${esc(g.domain)}</div>` +
+  (gains && gains.length
+    ? `<div class="ev-gain">${esc(t("evals.rowGain", { g: gains.join(" · ") }))}</div>` : "");
 
-/**
- * What the merchant is expected to disclose.
- *
- * These strings were hand-seeded from prior knowledge, not read off a filing, so
- * on an unverified row this is an expectation and not a fact. Printing it under
- * a "disclosed metric" heading as though it were established would be an
- * unsourced claim inside the accuracy harness, which is the exact thing this
- * page exists to refuse. Once a human verifies the row they have opened the
- * source, so the expectation has been confirmed and the qualifier comes off.
- */
 const metricCellHtml = (g) => {
-  if (!g.disclosed_metric) return `<span class="ink-4">&ndash;</span>`;
-  const text = esc(g.disclosed_metric);
-  return g.verified ? text
-    : `${text}<span class="ev-unconf" title="seeded from prior knowledge, not read off a filing"> ?</span>`;
+  if (!g.disclosed_metric) return GHOST;
+  return g.verified ? esc(g.disclosed_metric) : `<span class="ink-3">${esc(g.disclosed_metric)}</span>`;
 };
 
 const monthlyCellHtml = (g) =>
-  g.disclosed_value != null ? `<span class="mono">${esc(count(g.disclosed_value))}</span>` : `<span class="ink-4">&ndash;</span>`;
+  g.disclosed_value != null
+    ? `<span class="mono${g.verified ? "" : " ink-3"}">${esc(count(g.disclosed_value))}</span>`
+    : GHOST;
 
-/**
- * How the figure was established, and the working behind it.
- *
- * An extracted figure shows the sentence it came from and the arithmetic that
- * turned it into a monthly rate, because that is what makes it checkable by
- * someone who does not trust the tool. A human-established figure needs no
- * working shown: a person opened the document.
- */
-const provenanceHtml = (g, t) => {
-  if (!g.verified) return "";
-  const how = g.established_by === "extraction"
-    ? mark("half", t("evals.byExtraction"), { tone: "mute" })
-    : mark("filled", t("evals.byHuman"), { tone: "ok" });
-  const sum = (g.raw_value && g.raw_period)
-    ? `<div class="ev-arith">${esc(num(g.raw_value))} ${esc(g.raw_period)}${
-        g.period ? ` <span class="ink-3">(${esc(g.period)})</span>` : ""
-      } &rarr; ${esc(count(g.disclosed_value))} / ${esc(t("evals.perMonth"))}</div>` : "";
-  const quote = g.verbatim
-    ? `<blockquote class="ev-quote">${esc(g.verbatim)}</blockquote>` : "";
-  const flags = g.truth_flags
-    ? `<div class="ev-tflag">${esc(g.truth_flags)}</div>` : "";
-  return `<div class="ev-prov">${how}${sum}${quote}${flags}</div>`;
+const establishedCellHtml = (g, t) => {
+  if (!g.verified) return mark("hollow", t("evals.notEstablished"), { tone: "mute" });
+  const word = g.established_by === "human" ? t("evals.byHuman") : t("evals.byExtraction");
+  const when = dateISO(g.verified_at);
+  return mark("filled", word, { tone: "ok" }) +
+    (when ? `<div class="ev-sub mono ink-4">${esc(when)}</div>` : "");
 };
 
-const statusCellHtml = (g, t, assessed) => {
-  const m = mark(g.verified ? "filled" : "hollow", g.verified ? t("evals.verified") : t("evals.unverified"), { tone: g.verified ? "ok" : "mute" });
-  const notAssessed = assessed && assessed.has(g.domain) ? "" :
-    `<div class="ev-sub ink-3">${esc(t("evals.notAssessed"))} &middot; <a href="/">${esc(t("evals.assessFromQueue"))}</a></div>`;
-  return m + notAssessed;
-};
-
-/**
- * The source cell.
- *
- * Once verified, this is the URL the human actually read. Before that it offers
- * the disclosures Floor already found while assessing the merchant, so
- * verifying means opening a filing rather than hunting for one.
- *
- * The line that keeps this honest: handing over the link is navigation, filling
- * in the figure would be the verification itself. So links are offered and the
- * number never is.
- */
-const sourceCellHtml = (g, t, found) => {
+const sourceCellHtml = (g, found) => {
   if (g.source_url) {
-    return `<a class="mono" href="${esc(g.source_url)}" target="_blank" rel="noopener">${esc(host(g.source_url))} &#8599;</a>`;
+    return `<a class="mono ev-filed" href="${esc(g.source_url)}" target="_blank" rel="noopener">${esc(host(g.source_url))} &#8599;</a>`;
   }
-  // The first link is the document that measures the metric this row asks for.
-  // Open that one. The rest are fallbacks and stay quiet so they do not read as
-  // four things to check.
-  const list = found || [];
-  const links = list.slice(0, 3).map((s, i) =>
-    `<a class="ev-src${i === 0 && s.answers ? " is-best" : ""}${s.primary ? " is-primary" : ""}"
-        href="${esc(s.url)}" target="_blank" rel="noopener"
-        title="${esc(s.title || s.url)}">${esc(s.host)} &#8599;</a>`).join("");
-  if (!links) {
-    return g.source_note
-      ? `<span class="ink-3">${esc(g.source_note)}</span>`
-      : `<span class="ink-4">&ndash;</span>`;
-  }
+  // The arrowed link is the document that measures the metric this row
+  // asks for; the rest are fallbacks and stay quiet.
+  const links = (found || []).slice(0, 3).map((s, i) =>
+    `<a class="ev-src${i === 0 && s.answers ? " is-best" : ""}${s.primary ? " is-primary" : ""}" href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(s.title || s.url)}">${esc(s.host)} &#8599;</a>`).join("");
+  if (!links) return g.source_note ? `<span class="ink-3">${esc(g.source_note)}</span>` : GHOST;
   return `<div class="ev-srcs">${links}</div>` +
     (g.source_note ? `<div class="ev-sub ink-3">${esc(g.source_note)}</div>` : "");
 };
 
-const actionCellHtml = (g, t) =>
-  (!g.verified && !g.archived_at)
-    ? `<button type="button" class="btn btn-text" data-action="gold:extract" data-domain="${esc(g.domain)}">${esc(t("evals.establish"))}</button>
-       <button type="button" class="btn btn-text" data-action="gold:openVerify" data-id="${esc(g.id)}">${esc(t("gold.enter"))}</button>`
+/* One action per row, and it is the normal path. The escape hatch,
+   entering a figure by hand, lives in the row menu where exceptions
+   belong. */
+const actionCellHtml = (g, canExtract, t) =>
+  (!g.verified && !g.archived_at && canExtract)
+    ? `<button type="button" class="btn btn-text" data-action="gold:extract">${esc(t("evals.establish"))}</button><span class="prog ev-rowprog" hidden><i></i></span>`
     : "";
 
 const goldMenuItems = (g, t) => {
-  const items = [{ label: t("evals.menuEdit"), action: "gold:openEdit" }];
+  const items = [];
+  if (!g.verified && !g.archived_at) items.push({ label: t("evals.enterByHand"), action: "gold:openVerify" });
+  items.push({ label: t("evals.menuEdit"), action: "gold:openEdit" });
   if (g.verified) items.push({ label: t("evals.menuUnverify"), action: "gold:unverify" });
   items.push("-", { label: t("evals.menuView"), href: `/account/${encodeURIComponent(g.domain)}` });
   if (g.archived_at) items.push({ label: t("evals.menuRestore"), action: "gold:restore" });
@@ -279,44 +348,165 @@ const goldMenuItems = (g, t) => {
   return items;
 };
 
-/* ============================ eval items ============================= */
+const menuHostHtml = (items, t) =>
+  `<div class="menu-host"><button type="button" class="btn-icon menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("kit.menu.aria"))}">${DOTS_SVG}</button>${rowMenu(items)}</div>`;
 
-const evalItemCells = (i, t) => {
-  const abstained = !!i.abstained;
-  const inBandMark = abstained
-    ? mark("hatch", t("eval.vAbstained"), { tone: "held" })
-    : i.in_band ? mark("filled", t("eval.vInBand"), { tone: "ok" }) : mark("hollow", t("eval.vOutside"), { tone: "bad" });
-  const floorMark = abstained
-    ? mark("hatch", t("eval.vAbstained"), { tone: "held" })
-    : i.floor_correct ? mark("filled", t("eval.vCorrect"), { tone: "ok" }) : mark("hollow", t("eval.vWrong"), { tone: "bad" });
-  return [
-    esc(i.domain),
-    `<span class="mono">${esc(count(i.truth))}</span>`,
-    abstained ? `<span class="ink-4">&ndash;</span>` : `<span class="mono">${esc(count(i.pred_min))}&ndash;${esc(count(i.pred_max))}</span>`,
-    inBandMark,
-    floorMark,
-    i.source_url ? `<a class="mono" href="${esc(i.source_url)}" target="_blank" rel="noopener">${esc(host(i.source_url))} &#8599;</a>` : `<span class="ink-4">&ndash;</span>`,
-  ];
-};
+/**
+ * The provenance row: what makes an established figure checkable by
+ * someone who does not trust the tool. Rendered full-width under the
+ * row, at rest, because the verbatim sentence is the page's argument.
+ * On the Spanish surface the quote carries the verbatim label, since
+ * filing text is stored in its original English.
+ */
+function provenanceRowHtml(g, t, lang, nCols) {
+  if (!g.verified) return "";
+  const a = arithParts(g);
+  const quote = g.verbatim
+    ? `<blockquote class="ev-quote">${esc(g.verbatim)}${lang === "es" ? `<span class="verbatim">${esc(t("evals.verbatimSrc"))}</span>` : ""}</blockquote>` : "";
+  const arith = a
+    ? `<div class="ev-arith mono">${esc(a.raw)} / ${esc(a.rawPeriod)}${a.per ? ` (${esc(a.per)})` : ""} &rarr; ${esc(count(g.disclosed_value))} / ${esc(t("evals.perMonth"))}</div>` : "";
+  const flags = g.truth_flags
+    ? `<div class="ev-flag">${mark("half", t("evals.flagWord"), { tone: "warn" })}<span class="ink-2">${esc(g.truth_flags)}</span></div>` : "";
+  if (!quote && !arith && !flags) return "";
+  return `<tr class="ev-truth"><td colspan="${nCols}"><div class="ev-truth-in">${quote}${arith}${flags}</div></td></tr>`;
+}
+
+function truthRowHtml(g, ctx) {
+  const { t, lang, sources, gains } = ctx;
+  const canExtract = (sources[g.domain] || []).length > 0;
+  const main = `<tr data-id="${esc(g.id)}" class="${[g.verified ? "ev-vrow" : "", g.archived_at ? "row-dim" : ""].filter(Boolean).join(" ")}">
+    <td>${merchantCellHtml(g, gains[g.domain], t)}</td>
+    <td>${metricCellHtml(g)}</td>
+    <td class="num">${monthlyCellHtml(g)}</td>
+    <td>${establishedCellHtml(g, t)}</td>
+    <td>${sourceCellHtml(g, sources[g.domain])}</td>
+    <td>${actionCellHtml(g, canExtract, t)}</td>
+    <td class="col-menu">${menuHostHtml(goldMenuItems(g, t), t)}</td>
+  </tr>`;
+  return main + provenanceRowHtml(g, t, lang, 7);
+}
+
+function pendingRowHtml(g, ctx) {
+  const { t, assessed } = ctx;
+  const state = assessed.has(g.domain)
+    ? mark("hatch", t("evals.noLinks"), { tone: "mute" })
+    : mark("hollow", t("queue.notAssessed"), { tone: "ghost" });
+  return `<div class="ev-pend-row" data-id="${esc(g.id)}">
+    <span class="nm">${esc(g.name || g.domain)}</span>
+    <span class="dom mono ink-3">${esc(g.domain)}</span>
+    <span class="st">${state}</span>
+    <a class="ev-pend-go" href="/?q=${encodeURIComponent(g.domain)}">${esc(t("evals.assessFromQueue"))}</a>
+    ${menuHostHtml(goldMenuItems(g, t), t)}
+  </div>`;
+}
+
+/* ====================== eval results + readings ====================== */
 
 const evalCols = (t) => [
   { key: "merchant",  label: t("eval.merchant") },
-  { key: "disclosed", label: t("eval.disclosed"), align: "right", mono: true },
+  { key: "disclosed", label: t("eval.disclosed"), align: "right" },
   { key: "predicted", label: t("eval.predicted"), align: "right", mono: true },
   { key: "inband",    label: t("eval.inBandCol") },
   { key: "floorcall", label: t("eval.floorCall") },
   { key: "source",    label: t("eval.checkIt") },
 ];
 
-/* Numbered onboarding steps. Not a §3.7 state mark (those are a closed
-   set for domain state); this is page chrome for a one-time setup flow,
-   scoped to .p-evals, hollow until done, filled with a check once past. */
-const CHECK_SVG = `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 5.2 4 7.8 8.5 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+function evalItemCells(i, t, goldBy) {
+  const g = goldBy[i.domain];
+  const per = g && g.period ? String(g.period).split(" (")[0] : "";
+  const abst = !!i.abstained;
+  const inBand = abst ? mark("hatch", t("eval.vAbstained"), { tone: "held" })
+    : i.in_band ? mark("filled", t("eval.vInBand"), { tone: "ok" }) : mark("hollow", t("eval.vOutside"), { tone: "bad" });
+  const floorCall = abst ? mark("hatch", t("eval.vAbstained"), { tone: "held" })
+    : i.floor_correct ? mark("filled", t("eval.vCorrect"), { tone: "ok" }) : mark("hollow", t("eval.vWrong"), { tone: "bad" });
+  return [
+    esc((g && g.name) || i.domain),
+    `<span class="mono">${esc(count(i.truth))}</span>${per ? `<div class="ev-per mono ink-4">${esc(per)}</div>` : ""}`,
+    abst ? GHOST : `<span class="mono">${esc(count(i.pred_min))}&ndash;${esc(count(i.pred_max))}</span>`,
+    inBand,
+    floorCall,
+    i.source_url ? `<a class="mono" href="${esc(i.source_url)}" target="_blank" rel="noopener">${esc(host(i.source_url))} &#8599;</a>` : GHOST,
+  ];
+}
 
-const stepRow = (n, done, title, body) => `<div class="ev-step${done ? " done" : ""}">
-  <span class="ev-step-n" aria-hidden="true">${done ? CHECK_SVG : n}</span>
-  <div class="ev-step-b"><b class="t-body">${esc(title)}</b><p class="t-body ink-2">${body}</p></div>
-</div>`;
+/** One legible sentence per disagreement, computed, never smoothed. */
+function readingsHtml(items, t, goldBy) {
+  const misses = (items || []).filter((i) => !i.abstained && !i.in_band && i.truth != null);
+  if (!misses.length) return "";
+  const lines = misses.map((i) => {
+    const mid = i.pred_mid != null ? i.pred_mid : ((Number(i.pred_min) + Number(i.pred_max)) / 2);
+    const p = mid > 0 ? `${Math.round(Math.abs(i.truth / mid - 1) * 100)}%` : "";
+    const key = i.truth > mid ? "evals.missAbove" : "evals.missBelow";
+    const g = goldBy[i.domain];
+    const sentence = t(key, { d: (g && g.name) || i.domain, t: count(i.truth), p, m: count(mid) });
+    const floorLine = t(i.floor_correct ? "evals.missFloorOk" : "evals.missFloorBad");
+    return `<p class="ev-read"><b>${esc(sentence)}</b> ${esc(floorLine)}</p>`;
+  }).join("");
+  return `<div class="ev-reads">${lines}<p class="ev-read ink-3">${esc(t("evals.missWhy"))}</p></div>`;
+}
+
+/* =================== reliability by slice (the grid) ================= */
+
+function segRows(segments, t) {
+  const dims = [
+    ["by_derivation", t("evals.dim.derivation")],
+    ["by_region", t("evals.dim.region")],
+    ["by_magnitude", t("evals.dim.magnitude")],
+  ];
+  const out = [];
+  for (const [dim, dimLabel] of dims) {
+    const present = new Map((segments && segments[dim] ? segments[dim] : []).map((s) => [s.key, s]));
+    const known = SLICES[dim];
+    const all = [...known, ...[...present.keys()].filter((k) => !known.includes(k))];
+    all.forEach((k, idx) => {
+      const s = present.get(k);
+      const name = known.includes(k) ? esc(t(SLICE_KEY[dim](k))) : esc((s && s.label) || k);
+      let cells;
+      if (!s) {
+        cells = `<td class="num mono ink-4">&ndash;</td><td class="num mono ink-4">&ndash;</td>` +
+          `<td colspan="2">${mark("dashed", t("evals.neverMeasured"), { tone: "ghost" })}</td>`;
+      } else if (s.sample_too_small) {
+        cells = `<td class="num mono">${Number(s.scored) || 0}</td><td class="num mono">${Number(s.abstained) || 0}</td>` +
+          `<td colspan="2">${mark("hatch", t("evals.withheld", { n: Number(s.scored) || 0 }), { tone: "held" })}</td>`;
+      } else {
+        cells = `<td class="num mono">${Number(s.scored)}</td><td class="num mono">${Number(s.abstained) || 0}</td>` +
+          `<td><span class="mono">${esc(pct(s.floor_correct / s.scored))}</span></td>` +
+          `<td><span class="mono">${esc(pct(s.in_band / s.scored))}</span></td>`;
+      }
+      out.push(`<tr${idx === 0 ? ` class="ev-grp"` : ""}><td class="ev-dimlbl t-label">${idx === 0 ? esc(dimLabel) : ""}</td><td>${name}</td>${cells}</tr>`);
+    });
+  }
+  return out.join("");
+}
+
+function calRows(calibration, t) {
+  return (calibration || []).map((b) => {
+    const name = ["high", "mid", "low"].includes(b.key) ? esc(t(`evals.cal.${b.key}`)) : esc(b.label || b.key);
+    let obs;
+    if (!b.n) obs = mark("dashed", t("evals.neverMeasured"), { tone: "ghost" });
+    else if (b.sample_too_small) obs = mark("hatch", t("evals.withheld", { n: b.n }), { tone: "held" });
+    else obs = `<span class="mono">${esc(pct(b.in_band / b.n))}</span>`;
+    const claimed = b.claimed != null ? `<span class="mono">${Number(b.claimed).toFixed(2)}</span>` : GHOST;
+    return `<tr><td>${name}</td><td class="num mono">${Number(b.n) || 0}</td><td class="num">${claimed}</td><td>${obs}</td></tr>`;
+  }).join("");
+}
+
+function segBodyHtml(segments, blindNames, t) {
+  const blind = blindNames.length
+    ? `<p class="ev-note" id="ev-blind">${esc(t("evals.blindNote", { r: blindNames.join(", ") }))}</p>`
+    : `<p class="ev-note" id="ev-blind" hidden></p>`;
+  return `<div class="tbl-wrap"><table class="tbl tbl-dense ev-segtbl">
+    <thead><tr><th></th><th>${esc(t("evals.colSlice"))}</th><th class="num">${esc(t("evals.colScored"))}</th><th class="num">${esc(t("evals.colAbst"))}</th><th>${esc(t("eval.floorCall"))}</th><th>${esc(t("eval.inBandCol"))}</th></tr></thead>
+    <tbody>${segRows(segments, t)}</tbody>
+  </table></div>
+  ${blind}
+  <h3 class="t-label ev-cal-h">${esc(t("evals.dim.calibration"))}</h3>
+  <div class="tbl-wrap"><table class="tbl tbl-dense ev-caltbl">
+    <thead><tr><th>${esc(t("evals.calBucket"))}</th><th class="num">${esc(t("evals.colScored"))}</th><th class="num">${esc(t("evals.colClaimed"))}</th><th>${esc(t("evals.colObserved"))}</th></tr></thead>
+    <tbody>${calRows(segments && segments.calibration, t)}</tbody>
+  </table></div>
+  <p class="ev-note">${esc(t("evals.calNote"))}</p>`;
+}
 
 /* ============================== render ================================ */
 
@@ -324,125 +514,145 @@ export async function render(env, data, ctx) {
   const { lang, t } = ctx;
 
   const evalsRaw = data?.evals ?? { latest: data?.latest ?? null, items: data?.items ?? [] };
-  const goldRaw = data?.gold ?? { rows: data?.rows ?? [], total: data?.total ?? 0, verified: data?.verified ?? 0 };
+  const goldRaw = data?.gold ?? { rows: data?.rows ?? [] };
   const l = evalsRaw.latest || null;
   const items = evalsRaw.items || [];
+  const segments = evalsRaw.segments || { by_derivation: [], by_region: [], by_magnitude: [], calibration: [] };
   const rows = goldRaw.rows || [];
-
-  // Disclosures Floor already found, keyed by domain, so an unverified row can
-  // link straight to the filing instead of sending someone to a search engine.
   const sources = data?.sources || {};
-  const suggest = data?.suggest || null;
+  const suggest = data?.suggest || { suggestions: [], blind: [] };
+  const perAcct = Number(data?.cost_per_account) || 0.2549;
 
-  const activeRows = rows.filter((g) => !g.archived_at);
-  const archivedRows = rows.filter((g) => g.archived_at);
-  const totalActive = activeRows.length;
-  const verifiedActive = activeRows.filter((g) => g.verified).length;
-
-  // How many rows can actually be verified right now.
-  //
-  // The gold set was seeded as a list of merchants known to disclose volume
-  // publicly, chosen for that property alone and independently of what Floor
-  // had assessed. So a row can sit here with no prediction to compare against,
-  // which means it cannot be verified at any effort today.
-  //
-  // Counting those in the denominator made the header read "0 of 22" when only
-  // a fraction were reachable. On the one page whose whole job is honest
-  // numbers, a denominator that includes unavailable work is the wrong number.
-  const verifiable = activeRows.filter((g) => !g.verified && (sources[g.domain] || []).length > 0).length;
-  const waiting = activeRows.filter((g) => !g.verified && !(sources[g.domain] || []).length).length;
-  // Archived rows never disappear (§5.4 undo doctrine); they stay in the
-  // same table, dimmed, sorted after the active ones.
-  // The gold set proper is only what can be graded: a row with no prediction
-  // has nothing to compare against, so it is not an answer-key entry yet. It is
-  // a note that a company discloses, and the action it deserves is "assess
-  // this", not "verify this". Mixing the two framed an upstream blocker as work
-  // the operator was failing to do.
-  const perAcct = Number(data?.cost_per_account || 0.2549);
-  const gradable = (g) => g.verified || (sources[g.domain] || []).length > 0;
-  const goldRows = [...activeRows.filter(gradable), ...archivedRows];
-  const pendingRows = activeRows.filter((g) => !gradable(g));
-  const pendingCost = "$" + (pendingRows.length * perAcct).toFixed(2);
-  const sortedRows = goldRows;
-
-  // Cross-link law (§4.6): a gold row whose merchant has no live
-  // assessment shows that plainly instead of silently looking wrong.
-  // No endpoint supplies this, so it is one guarded, read-only query
-  // against the domains actually on this page.
+  // Which gold domains have a live assessment: tells "never assessed"
+  // apart from "assessed, but its filings gave no links". Read-only and
+  // guarded; a missing DB binding degrades to the second wording never
+  // being used, not to a crash.
   const assessed = await assessedDomains(env, rows.map((g) => g.domain));
 
-  const rate = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : null);
+  /* ---- the four populations. A row with no prediction is not
+     unverified, it is ungradeable, and it never shares a table with the
+     answer key. ---- */
+  const active = rows.filter((g) => !g.archived_at);
+  const archived = rows.filter((g) => g.archived_at);
+  const gradable = (g) => !!g.verified || (sources[g.domain] || []).length > 0;
+  const mainRows = [...active.filter(gradable), ...archived];
+  const pendingRows = active.filter((g) => !gradable(g));
+  const verified = active.filter((g) => g.verified).length;
+  const establishable = active.filter((g) => !g.verified && gradable(g)).length;
+  const reach = verified + establishable;
+  const waiting = pendingRows.length;
+  const pendingCost = "$" + (pendingRows.length * perAcct).toFixed(2);
+
+  const goldBy = {};
+  for (const g of rows) goldBy[g.domain] = g;
+
+  const gains = {};
+  for (const s of suggest.suggestions || []) {
+    const parsed = gainSlices(s.gains, t);
+    if (parsed.length) gains[s.domain] = parsed;
+  }
+  const suggestNames = (suggest.suggestions || []).map((s) => s.name || s.domain).join(", ");
+  const blindNames = (suggest.blind || []).map((b) => (GAIN_REGION[b] ? t(`evals.r.${GAIN_REGION[b]}`) : b));
+
+  /* ---- headline meter. Below MIN_HEADLINE_N a percentage would be
+     noise wearing a percentage sign, so the counts print instead and the
+     note says why. ---- */
+  const headStat = (numer, denom) =>
+    denom >= MIN_HEADLINE_N ? pct(numer / denom) : `${numer}/${denom}`;
+  const headNote = (numer, denom, bigNote) =>
+    denom >= MIN_HEADLINE_N ? bigNote : t("evals.rateWithheld", { n: denom });
 
   const meter = statRow([
-    { label: t("eval.floorCorrect"), value: l ? rate(l.floor_correct, l.n_scored) : null, note: l ? t("eval.ofScored", { a: l.floor_correct, b: l.n_scored }) : t("eval.noRunYet") },
-    { label: t("eval.inBand"),       value: l ? rate(l.in_band, l.n_scored) : null,       note: l ? t("eval.ofN", { a: l.in_band, b: l.n_scored }) : t("eval.noRunYet") },
-    { label: t("eval.abstainRate"),  value: l ? rate(l.abstained, l.n) : null,            note: t("eval.reported") },
-    { label: t("eval.goldVerified"), value: verifiedActive > 0 ? `${verifiedActive}/${totalActive}` : null,
-      note: verifiedActive > 0 ? t("eval.humanChecked") : t("evals.goldNoneNote", { b: totalActive }) },
+    { label: t("eval.floorCorrect"),
+      value: l ? headStat(l.floor_correct, l.n_scored) : null,
+      note: l ? headNote(l.floor_correct, l.n_scored, t("eval.ofScored", { a: l.floor_correct, b: l.n_scored })) : t("eval.noRunYet") },
+    { label: t("eval.inBand"),
+      value: l ? headStat(l.in_band, l.n_scored) : null,
+      note: l ? headNote(l.in_band, l.n_scored, t("eval.ofN", { a: l.in_band, b: l.n_scored })) : t("eval.noRunYet") },
+    { label: t("eval.abstainRate"),
+      value: l ? headStat(l.abstained, l.n) : null,
+      note: t("eval.reported") },
+    { label: t("evals.truthBase"),
+      value: reach ? `${verified}/${reach}` : null,
+      note: waiting ? t("evals.reachNote", { w: waiting }) : t("evals.reachAll") },
   ]);
 
+  /* ---- latest eval ---- */
   const evalBody = l && items.length
-    ? `${table({ cols: evalCols(t), rows: items.map((i) => ({
+    ? table({ cols: evalCols(t), rows: items.map((i) => ({
         id: i.domain,
         accent: i.abstained ? "held" : (i.floor_correct ? "ok" : "bad"),
-        cells: evalItemCells(i, t),
-      })) }, t)}`
-    : `<div class="ev-steps">
-        ${stepRow(1, verifiedActive > 0, t("gold.dlgTitle"), `${esc(t("eval.step1"))} ${verifiedActive > 0 ? esc(t("eval.nDone", { n: verifiedActive })) : esc(t("eval.noneYet"))}`)}
-        ${stepRow(2, false, t("eval.step2t"), esc(t("eval.step2")))}
-        ${stepRow(3, false, t("eval.step3t"), esc(t("eval.step3")))}
-      </div>`;
+        cells: evalItemCells(i, t, goldBy),
+      })) }, t) + readingsHtml(items, t, goldBy)
+    : `<div class="f-empty"><p>${esc(t("evals.emptyBody"))}</p></div>`;
 
   const evalSection = section({
     label: t("eval.eyebrow"),
     title: t("eval.latest"),
-    sub: l ? esc(t("eval.runMeta", { n: l.n, date: dateISO(l.run_at) })) : esc(t("eval.notRun")),
+    sub: `<span id="eval-sub">${l ? esc(t("eval.runMeta", { n: l.n, date: dateISO(l.run_at) })) : esc(t("eval.notRun"))}</span>`,
     actions: `<div class="prog" id="eval-prog" hidden><i></i></div>${btn(t("eval.run"), { kind: "primary", id: "run-eval", action: "eval:run" })}`,
     body: `<div id="eval-body">${evalBody}</div>
       <p class="f-error" id="eval-error" hidden><span class="msg"></span> ${btn(t("evals.retry"), { kind: "text", action: "eval:run" })}</p>
-      <p class="t-body ink-3" style="margin-top:16px;max-width:64ch">${esc(t("eval.foot"))}</p>`,
+      <p class="t-body ink-3 ev-foot">${esc(t("eval.foot"))}</p>`,
   });
 
-  const reachable = verifiedActive + verifiable;
-  const progPct = reachable ? Math.round((verifiedActive / reachable) * 100) : 0;
-  const goldTable = table({
-    cols: [
-      { key: "merchant", label: t("eval.merchant") },
-      { key: "metric",   label: t("gold.metric") },
-      { key: "monthly",  label: t("gold.monthly"), align: "right", mono: true },
-      { key: "status",   label: t("evals.status") },
-      { key: "source",   label: t("ev.source") },
-      { key: "action",   label: "" },
-    ],
-    rows: sortedRows.map((g) => ({
-      id: g.id,
-      dim: !!g.archived_at,
-      cells: [
-        merchantCellHtml(g) + provenanceHtml(g, t),
-        metricCellHtml(g),
-        monthlyCellHtml(g),
-        statusCellHtml(g, t, assessed),
-        sourceCellHtml(g, t, sources[g.domain]),
-        actionCellHtml(g, t),
-      ],
-      menu: goldMenuItems(g, t),
-    })),
-    size: "dense",
-    empty: esc(t("evals.addDlgHint")),
-  }, t);
+  /* ---- reliability by slice: the part that was computed, returned,
+     and never rendered anywhere. ---- */
+  const segSection = section({
+    label: t("evals.segLabel"),
+    title: t("evals.segTitle"),
+    sub: esc(t("evals.segSub")),
+    body: `<div id="ev-seg">${segBodyHtml(segments, blindNames, t)}</div>`,
+  });
+
+  /* ---- the truth base ---- */
+  const rowCtx = { t, lang, sources, gains, assessed };
+  const progPct = reach ? Math.round((verified / reach) * 100) : 0;
+
+  const tbody = mainRows.length
+    ? mainRows.map((g) => truthRowHtml(g, rowCtx)).join("")
+    : `<tr><td colspan="7" style="height:auto;border-bottom:0;padding:16px 0"><div class="f-empty"><p>${esc(t("evals.addDlgHint"))}</p></div></td></tr>`;
+
+  const goldTable = `<div class="tbl-wrap"><table class="tbl ev-gold">
+    <thead><tr>
+      <th>${esc(t("eval.merchant"))}</th>
+      <th>${esc(t("gold.metric"))}</th>
+      <th class="num">${esc(t("gold.monthly"))}</th>
+      <th>${esc(t("evals.colEst"))}</th>
+      <th>${esc(t("ev.source"))}</th>
+      <th></th>
+      <th class="col-menu"></th>
+    </tr></thead>
+    <tbody id="ev-gold-tbody">${tbody}</tbody>
+  </table></div>`;
+
+  const pendZone = `<div class="ev-pend" id="ev-pend"${pendingRows.length ? "" : " hidden"}>
+    <div class="ev-pend-h">
+      <span class="t-label">${esc(t("evals.pendingLabel"))}</span>
+      <span class="ev-pend-t t-body" id="ev-pend-t">${esc(t("evals.pendingTitle", { n: pendingRows.length }))}</span>
+    </div>
+    <p class="t-body ev-pend-b" id="ev-pend-b">${esc(t("evals.pendingBody", { c: pendingCost }))}</p>
+    <div id="ev-pend-list">${pendingRows.map((g) => pendingRowHtml(g, rowCtx)).join("")}</div>
+  </div>`;
 
   const goldSection = section({
     label: t("gold.title"),
-    sub: t("gold.sub"),
+    title: t("evals.truthTitle"),
+    sub: esc(t("evals.truthSub")),
     actions: btn(t("evals.addCandidate"), { kind: "quiet", action: "gold:openAdd" }),
     body: `<div class="ev-prog-row">
         <div class="prog" id="ev-gold-prog"><i style="width:${progPct}%"></i></div>
-        <span class="mono ink-3 ev-prog-n" id="ev-gold-prog-n">${esc(t("gold.progress", { a: verifiedActive, b: verifiedActive + verifiable }))}</span>
+        <span class="mono ink-3 ev-prog-n" id="ev-gold-prog-n">${esc(t("evals.headMetaAll", { a: verified, b: reach }))}</span>
       </div>
+      <p class="ev-note" id="ev-first"${suggestNames ? "" : " hidden"}>${suggestNames ? esc(t("evals.checkFirst", { names: suggestNames })) : ""}</p>
       ${goldTable}
-      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: reachable }))} ${esc(t("evals.metricUnconfirmed"))}</p>`,
+      <p class="ev-note" id="ev-metric-note">${esc(t("evals.metricNote"))}</p>
+      ${pendZone}`,
   });
 
+  /* ---- dialogs. Verify-by-hand is the escape hatch and says so in its
+     own copy; its refusal without figure + source renders under the
+     field the API names, never as a banner. ---- */
   const verifyDlg = dialog({
     id: "gold-verify-dlg",
     title: t("gold.dlgTitle"),
@@ -485,82 +695,30 @@ export async function render(env, data, ctx) {
 
   const state = JSON.stringify({
     gold: rows,
+    sources,
     assessed: [...assessed],
+    gains,
+    segments,
+    blind: suggest.blind || [],
+    costPer: perAcct,
     lang,
   }).replace(/</g, "\\u003c");
 
-  /* What to verify next.
-   *
-   * Deliberately absent when nothing would add information. Verification is
-   * human work, so a suggester that always has something to suggest
-   * manufactures chores. A candidate appears only when checking it would cover
-   * a dimension the verified set is blind to, and only when the tool already
-   * has a prediction to grade it against. */
-  const nextSection = (() => {
-    if (!suggest) return "";
-    const { suggestions = [], saturated, blind = [] } = suggest;
-    const blindLine = blind.length
-      ? `<p class="ev-blind">${esc(t("evals.blindRegions", { r: blind.join(", ") }))}</p>` : "";
-
-    if (saturated) {
-      return section({
-        label: t("evals.nextLabel"),
-        title: t("evals.nextTitle"),
-        body: `<p class="ev-sat">${esc(t("evals.saturated"))}</p>${blindLine}`,
-      });
-    }
-    const list = suggestions.map((c) => `
-      <div class="ev-next-row">
-        <div>
-          <div><span class="nm">${esc(c.name)}</span><span class="dom">${esc(c.domain)}</span></div>
-          <div class="ev-next-gain">${c.gains.map((g) => `<b>${esc(g)}</b>`).join(" &middot; ")}</div>
-        </div>
-        <div class="ev-next-pred">${esc(t("evals.floorSays", { n: count(c.predicted) }))}</div>
-      </div>`).join("");
-
-    return section({
-      label: t("evals.nextLabel"),
-      title: t("evals.nextTitle"),
-      sub: t("evals.nextSub"),
-      body: `<div class="ev-next-list">${list}</div>${blindLine}`,
-    });
-  })();
-
-
-  /* Merchants that disclose but have never been assessed.
-   *
-   * Kept out of the gold table on purpose. There is nothing to compare them
-   * against, so calling them "unverified" would blame the operator for a step
-   * that happens somewhere else. The action here is assess, not verify. */
-  const pendingSection = pendingRows.length ? section({
-    label: t("evals.pendingLabel"),
-    title: t("evals.pendingTitle", { n: pendingRows.length }),
-    sub: t("evals.pendingSub"),
-    body: `<div class="ev-pend">${pendingRows.map((g) => `
-        <a class="ev-pend-row" href="/?q=${encodeURIComponent(g.domain)}">
-          <span class="nm">${esc(g.name || g.domain)}</span>
-          <span class="dom">${esc(g.domain)}</span>
-          <span class="met">${esc(g.disclosed_metric || "")}</span>
-        </a>`).join("")}</div>
-      <p class="ev-blind">${esc(t("evals.pendingFoot", { c: pendingCost }))} ${esc(t("evals.pendingUnconf"))}</p>`,
-  }) : "";
+  const headMeta = waiting
+    ? t("evals.headMeta", { a: verified, b: reach, w: waiting })
+    : t("evals.headMetaAll", { a: verified, b: reach });
 
   return `
     <div class="whead">
       <div class="whead-t">
         <h1 class="t-title">${esc(t("nav.accuracy"))}</h1>
-        <span class="whead-meta" id="ev-verified-meta">${esc(
-          waiting
-            ? t("evals.progressSplit", { a: verifiedActive, b: verifiedActive + verifiable, w: waiting })
-            : t("gold.progress", { a: verifiedActive, b: totalActive })
-        )}</span>
+        <span class="whead-meta" id="ev-verified-meta">${esc(headMeta)}</span>
       </div>
     </div>
     <div class="ev-meter" id="ev-meter">${meter}</div>
     ${evalSection}
-    ${nextSection}
+    ${segSection}
     ${goldSection}
-    ${pendingSection}
     ${verifyDlg}
     ${editDlg}
     ${addDlg}
@@ -570,10 +728,8 @@ export async function render(env, data, ctx) {
 
 /**
  * Which of these domains have at least one live (non-deleted) assessment.
- *
- * Read-only, guarded: a Node preview or a stripped-down test env without a
- * DB binding degrades to "unknown for everyone" rather than throwing, so
- * this file never crashes the page over an enhancement.
+ * Read-only, guarded: a Node preview without a DB binding degrades to
+ * "unknown for everyone" rather than throwing.
  */
 async function assessedDomains(env, domains) {
   const set = new Set();
@@ -588,8 +744,7 @@ async function assessedDomains(env, domains) {
     ).bind(...clean).all();
     for (const r of results || []) set.add(r.domain);
   } catch {
-    // Enhancement only: an unreachable or unmigrated DB should never take
-    // the accuracy page down with it.
+    // Enhancement only: an unreachable DB never takes the page down.
   }
   return set;
 }
@@ -599,9 +754,41 @@ async function assessedDomains(env, domains) {
 export function css() {
   return `
   .p-evals .ev-meter { margin-top: 32px; }
+  .p-evals #eval-prog { width: 96px; }
+  .p-evals .f-error { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .p-evals .ev-foot { margin-top: 16px; max-width: 64ch; }
 
-  /* Disclosures Floor already found, offered as starting points. Primary
-     filings carry ink; anything reporting on a filing stays quiet. */
+  /* readings: a disagreement is rendered legible, not embarrassing */
+  .p-evals .ev-reads { margin-top: 16px; display: grid; gap: 8px; }
+  .p-evals .ev-read { font: 400 14px/1.55 var(--sans); color: var(--ink-2); max-width: 74ch; }
+  .p-evals .ev-read b { color: var(--ink-1); font-weight: 600; }
+  .p-evals .ev-per { font-size: 11px; margin-top: 2px; }
+
+  /* reliability by slice */
+  .p-evals .ev-segtbl .ev-dimlbl { color: var(--ink-3); width: 132px; white-space: nowrap; }
+  .p-evals .ev-segtbl tr.ev-grp:not(:first-child) td { padding-top: 12px; }
+  .p-evals .ev-cal-h { margin: 24px 0 4px; color: var(--ink-3); }
+  .p-evals .ev-caltbl { max-width: 720px; }
+  .p-evals .ev-note { margin-top: 12px; font-size: 13px; line-height: 1.5; color: var(--ink-3); max-width: 74ch; }
+
+  /* the truth base */
+  .p-evals .ev-dom { font-size: 12px; margin-top: 2px; }
+  .p-evals .ev-gain { font-size: 12px; line-height: 1.4; color: var(--ink-3); margin-top: 4px; max-width: 44ch; white-space: normal; }
+  .p-evals .ev-sub { font-size: 11px; line-height: 1.4; margin-top: 3px; }
+  .p-evals tr.ev-vrow td { border-bottom: 0; }
+  .p-evals tr.ev-truth td { height: auto; padding: 0 12px 14px 0; }
+  .p-evals .ev-truth-in { display: grid; gap: 6px; max-width: 78ch; }
+  .p-evals .ev-quote {
+    margin: 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--line-2);
+    font-size: 13px; line-height: 1.55; color: var(--ink-2);
+  }
+  .p-evals .ev-quote .verbatim { margin-left: 8px; }
+  .p-evals .ev-arith { font: 500 12px/1.5 var(--mono); color: var(--ink-2); }
+  .p-evals .ev-flag { font-size: 12px; line-height: 1.5; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .p-evals .ev-filed { white-space: nowrap; }
+
+  /* offered filings on establishable rows: the arrowed one measures the
+     metric this row asks for, the rest stay quiet */
   .p-evals .ev-srcs { display: flex; flex-wrap: wrap; gap: 4px 10px; }
   .p-evals .ev-src {
     font: 500 12px/1.5 var(--mono); color: var(--ink-3);
@@ -609,127 +796,119 @@ export function css() {
   }
   .p-evals .ev-src:hover { color: var(--ink-1); text-decoration: underline; }
   .p-evals .ev-src.is-primary { color: var(--ink-2); }
-  /* The one that measures what this row is asking for. Open this first. */
   .p-evals .ev-src.is-best { color: var(--ink-1); font-weight: 560; }
   .p-evals .ev-src.is-best::before { content: "\\2192\\00a0"; color: var(--accent); }
 
-  /* What to check next. Absent entirely when nothing would add information,
-     because a panel that always has work in it is a chore generator. */
-  .p-evals .ev-next { margin: 28px 0 8px; }
-  .p-evals .ev-next-list { display: grid; gap: 1px; background: var(--line-1); border-block: 1px solid var(--line-1); }
-  .p-evals .ev-next-row {
-    background: var(--bg); padding: 14px 0;
-    display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 16px;
-  }
-  .p-evals .ev-next-row .nm { font-weight: 560; }
-  .p-evals .ev-next-row .dom { font: 500 12px/1.5 var(--mono); color: var(--ink-3); margin-left: 8px; }
-  .p-evals .ev-next-gain { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
-  .p-evals .ev-next-gain b { font-weight: 560; color: var(--ink-1); }
-  .p-evals .ev-next-pred { font: 500 13px/1.5 var(--mono); color: var(--ink-3); white-space: nowrap; }
-  .p-evals .ev-blind { font-size: 13px; color: var(--ink-3); margin-top: 12px; }
-  .p-evals .ev-sat { font-size: 14px; color: var(--ink-2); }
-  .p-evals .ev-prov { margin-top: 6px; display: grid; gap: 4px; }
-  .p-evals .ev-arith { font: 500 12px/1.5 var(--mono); color: var(--ink-2); }
-  .p-evals .ev-quote {
-    margin: 2px 0 0; padding-left: 9px; border-left: 2px solid var(--line-2);
-    font-size: 12.5px; line-height: 1.5; color: var(--ink-2); max-width: 62ch;
-  }
-  .p-evals .ev-tflag { font-size: 12px; color: var(--held); max-width: 62ch; }
-
-  /* The metric on an unverified row is an expectation, not a reading. */
-  .p-evals .ev-unconf { color: var(--held); font-weight: 560; cursor: help; }
-  .p-evals .ev-pend { display: grid; gap: 1px; background: var(--line-1); border-block: 1px solid var(--line-1); }
-  .p-evals .ev-pend-row {
-    background: var(--bg); padding: 11px 0; text-decoration: none; color: inherit;
-    display: grid; grid-template-columns: minmax(150px,1fr) minmax(140px,1fr) 2fr; gap: 16px; align-items: baseline;
-  }
-  .p-evals .ev-pend-row:hover .nm { text-decoration: underline; }
-  .p-evals .ev-pend-row .nm { font-weight: 560; }
-  .p-evals .ev-pend-row .dom { font: 500 12px/1.5 var(--mono); color: var(--ink-3); }
-  .p-evals .ev-pend-row .met { font-size: 13px; color: var(--ink-3); }
-
-  .p-evals .ev-dom { font-size: 12px; margin-top: 2px; }
-  .p-evals .ev-sub { font-size: 12px; line-height: 1.4; margin-top: 4px; }
-  .p-evals .ev-sub a { color: var(--ink-3); }
-  .p-evals .ev-sub a:hover { color: var(--ink-1); }
+  .p-evals .ev-rowprog { display: inline-block; width: 56px; margin-left: 10px; vertical-align: middle; }
 
   .p-evals .ev-prog-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
   .p-evals .ev-prog-row .prog { flex: 1; }
-  .p-evals .ev-prog-n { flex: none; white-space: nowrap; }
+  .p-evals .ev-prog-n { flex: none; white-space: nowrap; font-size: 12px; }
+  .p-evals #ev-first { margin: 0 0 16px; }
 
-  .p-evals #eval-prog { width: 96px; }
-  .p-evals .f-error { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-
-  .p-evals .ev-steps { display: flex; flex-direction: column; gap: 20px; max-width: 64ch; }
-  .p-evals .ev-step { display: flex; gap: 12px; align-items: flex-start; }
-  .p-evals .ev-step-n {
-    flex: none; width: 20px; height: 20px; margin-top: 2px;
-    border-radius: 50%; border: 1px solid var(--line-2);
-    display: grid; place-items: center;
-    font: 600 11px/1 var(--mono); color: var(--ink-3);
+  /* not yet gradeable: deliberate absence, dashed, action is assess */
+  .p-evals .ev-pend { margin-top: 24px; border: 1px dashed var(--line-2); border-radius: 6px; padding: 16px 20px 8px; }
+  .p-evals .ev-pend-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .p-evals .ev-pend-h .t-label { color: var(--ink-3); }
+  .p-evals .ev-pend-t { color: var(--ink-1); font-weight: 500; }
+  .p-evals .ev-pend-b { margin: 8px 0 4px; color: var(--ink-2); max-width: 74ch; }
+  .p-evals #ev-pend-list { margin-top: 8px; overflow-x: auto; }
+  .p-evals .ev-pend-row {
+    display: grid; grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(190px, 1.3fr) auto 28px;
+    gap: 12px; align-items: center; padding: 8px 0; min-width: 560px;
+    border-top: 1px solid var(--line);
   }
-  .p-evals .ev-step.done .ev-step-n {
-    background: var(--ink-1); border-color: var(--ink-1); color: #fff;
-  }
-  .p-evals .ev-step-b p { margin-top: 2px; }
+  .p-evals .ev-pend-row .nm { font-weight: 500; }
+  .p-evals .ev-pend-row .dom { font-size: 12px; }
+  .p-evals .ev-pend-row .st { min-width: 0; }
+  .p-evals .ev-pend-go { font-size: 13px; white-space: nowrap; justify-self: end; }
   `;
 }
 
 /* =============================== script ================================ */
-/* Client mirrors of the cell/menu builders above, so a mutation can patch
-   or append a row without location.reload(). window.__EVALS_STATE__ is
-   emitted inside render()'s own body (script() takes no arguments, per
-   CONTRACT.md), so it is already on the page by the time this runs. */
+/* Client mirrors of the builders above, kept field for field in lockstep,
+   so every mutation rebuilds its region in place. No reload, ever. */
 
 export function script() {
   return `(() => {
     "use strict";
     const $ = (s, r) => (r || document).querySelector(s);
-    const STATE = window.__EVALS_STATE__ || { gold: [], assessed: [] };
-    const GOLD = STATE.gold;
-    const ASSESSED = new Set(STATE.assessed);
-    const T = window.Floor ? null : null; // placeholder, Floor attaches before this runs? see below
+    const STATE = window.__EVALS_STATE__ || {};
+    const GOLD = STATE.gold || [];
+    const SOURCES = STATE.sources || {};
+    const ASSESSED = new Set(STATE.assessed || []);
+    let GAINS = STATE.gains || {};
+    let BLIND = STATE.blind || [];
+    let LAST_SEG = STATE.segments || null;
+    const COSTPER = Number(STATE.costPer) || 0.2549;
+    const LANG = STATE.lang || "en";
+    const MIN_HEADLINE_N = 5;
 
+    const t = (key, vars) => (window.Floor ? window.Floor.t(key, vars) : key);
     const esc = (s) => String(s == null ? "" : s)
       .replace(/\\s*[\\u2014\\u2015]\\s*/g, ", ")
       .replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-
     const fmtCount = (n) => {
-      if (n == null) return "unknown";
+      if (n == null) return "";
       const v = Number(n);
       if (v >= 1e9) return (v/1e9).toFixed(1).replace(/\\.0$/, "") + "B";
       if (v >= 1e6) return (v/1e6).toFixed(1).replace(/\\.0$/, "") + "M";
       if (v >= 1e3) return Math.round(v/1e3) + "k";
       return String(v);
     };
-
+    const num = (n) => Number(n).toLocaleString("en-US");
+    const pctOf = (n) => Math.round((n || 0) * 100) + "%";
     const hostOf = (u) => { try { return new URL(u).host.replace(/^www\\./, ""); } catch { return String(u || ""); } };
+    const dateISO = (s) => { const m = String(s || "").match(/^\\d{4}-\\d{2}-\\d{2}/); return m ? m[0] : ""; };
+    const GHOST = '<span class="ink-4">&ndash;</span>';
 
+    /* marks: same closed set the kit draws */
     const MK = {
       filled: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>',
+      half: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 1.2a3.8 3.8 0 0 1 0 7.6Z" fill="currentColor"/></svg>',
       hollow: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
       hatch: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/><path d="M1 6.6 3.4 9M1 3.2 6.8 9M2.8 1 9 7.2M6.4 1 9 3.6" stroke="currentColor" stroke-width="1"/></svg>',
+      dashed: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 1.7"/></svg>',
     };
-    const mk = (kind, label, tone) => { const cls = "mk tone-" + tone; return '<span class="' + cls + '">' + MK[kind] + '<span class="mk-w">' + esc(label) + '</span></span>'; };
+    const mk = (kind, label, tone) => '<span class="mk tone-' + tone + '">' + MK[kind] + '<span class="mk-w">' + esc(label) + '</span></span>';
     const DOTS_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="11.5" cy="7" r="1.3"/></svg>';
 
-    const t = (key, vars) => (window.Floor ? window.Floor.t(key, vars) : key);
+    /* ---- truth-base builders, mirroring render() ---- */
+    const gradable = (g) => !!g.verified || (SOURCES[g.domain] || []).length > 0;
 
-    const merchantCell = (g) => '<b class="t-body">' + esc(g.name || g.domain) + '</b><div class="mono ink-3 ev-dom">' + esc(g.domain) + '</div>';
-    const metricCell = (g) => g.disclosed_metric ? esc(g.disclosed_metric) : '<span class="ink-4">&ndash;</span>';
-    const monthlyCell = (g) => g.disclosed_value != null ? '<span class="mono">' + esc(fmtCount(g.disclosed_value)) + '</span>' : '<span class="ink-4">&ndash;</span>';
-    const statusCell = (g) => {
-      const m = mk(g.verified ? "filled" : "hollow", g.verified ? t("evals.verified") : t("evals.unverified"), g.verified ? "ok" : "mute");
-      const na = ASSESSED.has(g.domain) ? "" : '<div class="ev-sub ink-3">' + esc(t("evals.notAssessed")) + ' &middot; <a href="/">' + esc(t("evals.assessFromQueue")) + '</a></div>';
-      return m + na;
+    const merchantCell = (g) => {
+      const gains = GAINS[g.domain];
+      return '<b class="t-body">' + esc(g.name || g.domain) + '</b>' +
+        '<div class="mono ink-3 ev-dom">' + esc(g.domain) + '</div>' +
+        (gains && gains.length ? '<div class="ev-gain">' + esc(t("evals.rowGain", { g: gains.join(" \\u00b7 ") })) + '</div>' : '');
     };
-    const sourceCell = (g) => g.source_url ? '<a class="mono" href="' + esc(g.source_url) + '" target="_blank" rel="noopener">' + esc(hostOf(g.source_url)) + ' &#8599;</a>'
-      : g.source_note ? '<span class="ink-3">' + esc(g.source_note) + '</span>' : '<span class="ink-4">&ndash;</span>';
-    const actionCell = (g) => (!g.verified && !g.archived_at)
-      ? '<button type="button" class="btn btn-text" data-action="gold:openVerify" data-id="' + esc(g.id) + '">' + esc(t("gold.enter")) + '</button>' : "";
+    const metricCell = (g) => !g.disclosed_metric ? GHOST
+      : (g.verified ? esc(g.disclosed_metric) : '<span class="ink-3">' + esc(g.disclosed_metric) + '</span>');
+    const monthlyCell = (g) => g.disclosed_value != null
+      ? '<span class="mono' + (g.verified ? '' : ' ink-3') + '">' + esc(fmtCount(g.disclosed_value)) + '</span>' : GHOST;
+    const establishedCell = (g) => {
+      if (!g.verified) return mk("hollow", t("evals.notEstablished"), "mute");
+      const word = g.established_by === "human" ? t("evals.byHuman") : t("evals.byExtraction");
+      const when = dateISO(g.verified_at);
+      return mk("filled", word, "ok") + (when ? '<div class="ev-sub mono ink-4">' + esc(when) + '</div>' : '');
+    };
+    const sourceCell = (g) => {
+      if (g.source_url) return '<a class="mono ev-filed" href="' + esc(g.source_url) + '" target="_blank" rel="noopener">' + esc(hostOf(g.source_url)) + ' &#8599;</a>';
+      const links = (SOURCES[g.domain] || []).slice(0, 3).map((s, i) =>
+        '<a class="ev-src' + (i === 0 && s.answers ? ' is-best' : '') + (s.primary ? ' is-primary' : '') +
+        '" href="' + esc(s.url) + '" target="_blank" rel="noopener" title="' + esc(s.title || s.url) + '">' + esc(s.host) + ' &#8599;</a>').join('');
+      if (!links) return g.source_note ? '<span class="ink-3">' + esc(g.source_note) + '</span>' : GHOST;
+      return '<div class="ev-srcs">' + links + '</div>' +
+        (g.source_note ? '<div class="ev-sub ink-3">' + esc(g.source_note) + '</div>' : '');
+    };
+    const actionCell = (g) => (!g.verified && !g.archived_at && (SOURCES[g.domain] || []).length)
+      ? '<button type="button" class="btn btn-text" data-action="gold:extract">' + esc(t("evals.establish")) + '</button><span class="prog ev-rowprog" hidden><i></i></span>'
+      : '';
 
     const menuItems = (g) => {
-      const items = [{ label: t("evals.menuEdit"), action: "gold:openEdit" }];
+      const items = [];
+      if (!g.verified && !g.archived_at) items.push({ label: t("evals.enterByHand"), action: "gold:openVerify" });
+      items.push({ label: t("evals.menuEdit"), action: "gold:openEdit" });
       if (g.verified) items.push({ label: t("evals.menuUnverify"), action: "gold:unverify" });
       items.push("-", { label: t("evals.menuView"), href: "/account/" + encodeURIComponent(g.domain) });
       if (g.archived_at) items.push({ label: t("evals.menuRestore"), action: "gold:restore" });
@@ -739,92 +918,279 @@ export function script() {
     const menuHost = (g) => {
       const rows = menuItems(g).map((it) => it === "-" ? '<div class="menu-sep" role="separator"></div>' :
         (it.href ? '<a class="menu-item" role="menuitem" href="' + esc(it.href) + '">' + esc(it.label) + '</a>'
-          : '<button type="button" class="menu-item' + (it.danger ? " danger" : "") + '" role="menuitem" data-action="' + esc(it.action) + '"' + (it.danger ? ' data-danger="1"' : "") + '>' + esc(it.label) + '</button>')
+          : '<button type="button" class="menu-item' + (it.danger ? ' danger' : '') + '" role="menuitem" data-action="' + esc(it.action) + '"' + (it.danger ? ' data-danger="1"' : '') + '>' + esc(it.label) + '</button>')
       ).join("");
       return '<div class="menu-host"><button type="button" class="btn-icon menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(t("kit.menu.aria")) + '">' + DOTS_SVG + '</button><div class="menu" role="menu" hidden>' + rows + '</div></div>';
     };
 
-    function buildRowHtml(g) {
-      return '<tr data-id="' + esc(g.id) + '"' + (g.archived_at ? ' class="row-dim"' : '') + '>' +
+    const MONTHS_PER = { month: 1, quarter: 3, year: 12 };
+    const arith = (g) => {
+      if (g.raw_value == null || g.disclosed_value == null) return "";
+      const months = MONTHS_PER[String(g.raw_period || "").toLowerCase().trim()];
+      let raw = num(g.raw_value);
+      if (months) {
+        const mag = (g.disclosed_value * months) / g.raw_value;
+        const stops = [[1e9, "B"], [1e6, "M"], [1e3, "k"]];
+        for (let i = 0; i < stops.length; i++) {
+          if (Math.abs(mag - stops[i][0]) / stops[i][0] < 0.02) { raw = num(g.raw_value) + stops[i][1]; break; }
+        }
+      }
+      const per = String(g.period || "").split(" (")[0];
+      return esc(raw) + ' / ' + esc(g.raw_period || '') + (per ? ' (' + esc(per) + ')' : '') +
+        ' &rarr; ' + esc(fmtCount(g.disclosed_value)) + ' / ' + esc(t("evals.perMonth"));
+    };
+
+    const provRow = (g) => {
+      if (!g.verified) return "";
+      const quote = g.verbatim
+        ? '<blockquote class="ev-quote">' + esc(g.verbatim) +
+          (LANG === "es" ? '<span class="verbatim">' + esc(t("evals.verbatimSrc")) + '</span>' : '') + '</blockquote>' : '';
+      const a = arith(g);
+      const arithH = a ? '<div class="ev-arith mono">' + a + '</div>' : '';
+      const flags = g.truth_flags
+        ? '<div class="ev-flag">' + mk("half", t("evals.flagWord"), "warn") + '<span class="ink-2">' + esc(g.truth_flags) + '</span></div>' : '';
+      if (!quote && !arithH && !flags) return "";
+      return '<tr class="ev-truth"><td colspan="7"><div class="ev-truth-in">' + quote + arithH + flags + '</div></td></tr>';
+    };
+
+    const truthRow = (g) => {
+      const cls = [g.verified ? "ev-vrow" : "", g.archived_at ? "row-dim" : ""].filter(Boolean).join(" ");
+      return '<tr data-id="' + esc(g.id) + '"' + (cls ? ' class="' + cls + '"' : '') + '>' +
         '<td>' + merchantCell(g) + '</td>' +
         '<td>' + metricCell(g) + '</td>' +
-        '<td class="num mono">' + monthlyCell(g) + '</td>' +
-        '<td>' + statusCell(g) + '</td>' +
+        '<td class="num">' + monthlyCell(g) + '</td>' +
+        '<td>' + establishedCell(g) + '</td>' +
         '<td>' + sourceCell(g) + '</td>' +
         '<td>' + actionCell(g) + '</td>' +
         '<td class="col-menu">' + menuHost(g) + '</td>' +
-        '</tr>';
-    }
+        '</tr>' + provRow(g);
+    };
 
-    function patchRow(tr, g) {
-      const tds = tr.querySelectorAll(":scope > td");
-      if (tds.length < 7) return;
-      tds[0].innerHTML = merchantCell(g);
-      tds[1].innerHTML = metricCell(g);
-      tds[2].innerHTML = monthlyCell(g);
-      tds[3].innerHTML = statusCell(g);
-      tds[4].innerHTML = sourceCell(g);
-      tds[5].innerHTML = actionCell(g);
-      tds[6].innerHTML = menuHost(g);
-      tr.classList.toggle("row-dim", !!g.archived_at);
-    }
+    const pendRow = (g) => {
+      const state = ASSESSED.has(g.domain)
+        ? mk("hatch", t("evals.noLinks"), "mute")
+        : mk("hollow", t("queue.notAssessed"), "ghost");
+      return '<div class="ev-pend-row" data-id="' + esc(g.id) + '">' +
+        '<span class="nm">' + esc(g.name || g.domain) + '</span>' +
+        '<span class="dom mono ink-3">' + esc(g.domain) + '</span>' +
+        '<span class="st">' + state + '</span>' +
+        '<a class="ev-pend-go" href="/?q=' + encodeURIComponent(g.domain) + '">' + esc(t("evals.assessFromQueue")) + '</a>' +
+        menuHost(g) + '</div>';
+    };
 
-    function updateGoldRow(g) {
-      const i = GOLD.findIndex((x) => String(x.id) === String(g.id));
-      if (i >= 0) GOLD[i] = g; else GOLD.push(g);
-      const tr = document.querySelector('tr[data-id="' + g.id + '"]');
-      if (tr) { patchRow(tr, g); if (window.Floor) window.Floor.flash(tr); }
-      else {
-        const tbody = goldTbody();
-        if (tbody) {
-          const wrap = document.createElement("tbody");
-          wrap.innerHTML = buildRowHtml(g);
-          const newTr = wrap.firstElementChild;
-          const empty = tbody.querySelector("tr td .f-empty");
-          if (empty) tbody.innerHTML = "";
-          tbody.appendChild(newTr);
-          if (window.Floor) window.Floor.flash(newTr);
-        }
-      }
-      refreshAggregates();
-    }
-    function goldTbody() {
-      // The gold table is the last table on this page (the eval results
-      // table, when it exists, renders first).
-      const tables = document.querySelectorAll(".p-evals table");
-      const last = tables[tables.length - 1];
-      return last ? last.tBodies[0] : null;
-    }
-
-    /* ---- page-level aggregates: header meta, the meter stat, the gold
-       progress bar and its footer count. A mutation that only patched the
-       row it touched would leave every one of these lying, so every gold
-       mutation refreshes them from the in-memory GOLD state. */
-    function activeStats() {
-      const active = GOLD.filter((g) => !g.archived_at);
-      return { total: active.length, verified: active.filter((g) => g.verified).length };
-    }
-    function refreshAggregates() {
-      const { total, verified } = activeStats();
-      const metaText = t("gold.progress", { a: verified, b: total });
-      const meta = document.getElementById("ev-verified-meta");
-      if (meta) meta.textContent = metaText;
-      const statV = document.querySelector("#ev-meter .stat:last-child .stat-v");
-      const statN = document.querySelector("#ev-meter .stat:last-child .stat-n");
-      if (statV) {
-        statV.classList.toggle("none", verified <= 0);
-        statV.textContent = verified > 0 ? verified + "/" + total : "–";
-      }
-      if (statN) statN.textContent = verified > 0 ? t("eval.humanChecked") : t("evals.goldNoneNote", { b: total });
-      const prog = document.getElementById("ev-gold-prog");
-      if (prog) { const bar = prog.querySelector("i"); if (bar) bar.style.width = (total ? Math.round((verified / total) * 100) : 0) + "%"; }
-      const progN = document.getElementById("ev-gold-prog-n");
-      if (progN) progN.textContent = metaText;
-      const foot = document.getElementById("ev-gold-foot");
-      if (foot) foot.textContent = t("gold.foot", { n: total });
-    }
-
+    /* ---- region rebuilds. A mutation that patched one row would leave
+       the header, meter, progress and pending zone lying, so the whole
+       gold region rebuilds from the in-memory state every time. ---- */
     function goldById(id) { return GOLD.find((x) => String(x.id) === String(id)) || null; }
+    function mergeGold(row) {
+      const i = GOLD.findIndex((x) => String(x.id) === String(row.id));
+      if (i >= 0) GOLD[i] = row; else GOLD.push(row);
+    }
+
+    function rebuildGold(flashId) {
+      const active = GOLD.filter((g) => !g.archived_at);
+      const archived = GOLD.filter((g) => g.archived_at);
+      const main = [...active.filter(gradable), ...archived];
+      const pending = active.filter((g) => !gradable(g));
+
+      const tbody = document.getElementById("ev-gold-tbody");
+      if (tbody) {
+        tbody.innerHTML = main.length ? main.map(truthRow).join("")
+          : '<tr><td colspan="7" style="height:auto;border-bottom:0;padding:16px 0"><div class="f-empty"><p>' + esc(t("evals.addDlgHint")) + '</p></div></td></tr>';
+      }
+      const list = document.getElementById("ev-pend-list");
+      if (list) list.innerHTML = pending.map(pendRow).join("");
+      const zone = document.getElementById("ev-pend");
+      if (zone) zone.hidden = !pending.length;
+      const pt = document.getElementById("ev-pend-t");
+      if (pt) pt.textContent = t("evals.pendingTitle", { n: pending.length });
+      const pb = document.getElementById("ev-pend-b");
+      if (pb) pb.textContent = t("evals.pendingBody", { c: "$" + (pending.length * COSTPER).toFixed(2) });
+
+      refreshAggregates();
+      if (flashId != null && window.Floor) {
+        const tr = document.querySelector('#ev-gold-tbody tr[data-id="' + flashId + '"]') ||
+          document.querySelector('#ev-pend-list [data-id="' + flashId + '"]');
+        if (tr) window.Floor.flash(tr);
+      }
+    }
+
+    function setStat(i, value, note) {
+      const st = document.querySelectorAll("#ev-meter .stat")[i];
+      if (!st) return;
+      const v = st.querySelector(".stat-v"), n = st.querySelector(".stat-n");
+      if (v) { v.classList.toggle("none", value == null); v.textContent = value == null ? "\\u2013" : value; }
+      if (n && note != null) n.textContent = note;
+    }
+
+    function refreshAggregates() {
+      const active = GOLD.filter((g) => !g.archived_at);
+      const verified = active.filter((g) => g.verified).length;
+      const reach = verified + active.filter((g) => !g.verified && gradable(g)).length;
+      const waiting = active.filter((g) => !gradable(g)).length;
+
+      const meta = document.getElementById("ev-verified-meta");
+      if (meta) meta.textContent = waiting
+        ? t("evals.headMeta", { a: verified, b: reach, w: waiting })
+        : t("evals.headMetaAll", { a: verified, b: reach });
+      setStat(3, reach ? verified + "/" + reach : null,
+        waiting ? t("evals.reachNote", { w: waiting }) : t("evals.reachAll"));
+      const prog = document.getElementById("ev-gold-prog");
+      if (prog) { const bar = prog.querySelector("i"); if (bar) bar.style.width = (reach ? Math.round((verified / reach) * 100) : 0) + "%"; }
+      const progN = document.getElementById("ev-gold-prog-n");
+      if (progN) progN.textContent = t("evals.headMetaAll", { a: verified, b: reach });
+    }
+
+    /* ---- what to establish first: recomputed after any truth change ---- */
+    const REG = { "North America": "NORTHAMERICA", "Europe": "EUROPE", "APAC": "APAC", "LATAM": "LATAM", "AMEA": "AMEA" };
+    const BAND = { "above 50M/mo": "over_50m", "5M to 50M/mo": "5m_to_50m", "500k to 5M/mo": "500k_to_5m", "under 500k/mo": "under_500k" };
+    function parseGains(gains) {
+      const out = [];
+      for (const g of gains || []) {
+        let m;
+        if ((m = /^first (.+) row in the gold set$/.exec(g)) && REG[m[1]]) out.push(t("evals.r." + REG[m[1]]));
+        else if (/read off a disclosure/.test(g)) out.push(t("evals.seg.direct_count"));
+        else if (/derived from dollar volume/.test(g)) out.push(t("evals.seg.from_gmv_with_aov"));
+        else if ((m = /^first row (.+)$/.exec(g)) && BAND[m[1]]) out.push(t("evals.band." + BAND[m[1]]));
+      }
+      return out;
+    }
+    async function refreshSuggest() {
+      try {
+        const r = await fetch("/api/gold/suggest").then((x) => x.json());
+        if (!r || r.ok === false) return;
+        GAINS = {};
+        for (const s of r.suggestions || []) {
+          const parsed = parseGains(s.gains);
+          if (parsed.length) GAINS[s.domain] = parsed;
+        }
+        BLIND = r.blind || [];
+        const first = document.getElementById("ev-first");
+        if (first) {
+          const names = (r.suggestions || []).map((s) => s.name || s.domain).join(", ");
+          first.hidden = !names;
+          first.textContent = names ? t("evals.checkFirst", { names }) : "";
+        }
+        renderBlind();
+        rebuildGold();
+      } catch { /* advisory only */ }
+    }
+    function renderBlind() {
+      const el = document.getElementById("ev-blind");
+      if (!el) return;
+      const names = BLIND.map((b) => (REG[b] ? t("evals.r." + REG[b]) : b)).join(", ");
+      el.hidden = !names;
+      el.textContent = names ? t("evals.blindNote", { r: names }) : "";
+    }
+
+    /* ---- reliability by slice, rebuilt after an eval run ---- */
+    const SLICES = {
+      by_derivation: ["direct_count", "from_gmv_with_aov"],
+      by_region: ["NORTHAMERICA", "EUROPE", "APAC", "LATAM", "AMEA"],
+      by_magnitude: ["over_50m", "5m_to_50m", "500k_to_5m", "under_500k"],
+    };
+    const SLICE_KEY = {
+      by_derivation: (k) => "evals.seg." + k,
+      by_region: (k) => "evals.r." + k,
+      by_magnitude: (k) => "evals.band." + k,
+    };
+    function segTable(seg) {
+      const dims = [
+        ["by_derivation", t("evals.dim.derivation")],
+        ["by_region", t("evals.dim.region")],
+        ["by_magnitude", t("evals.dim.magnitude")],
+      ];
+      let rows = "";
+      for (const [dim, dimLabel] of dims) {
+        const present = new Map(((seg && seg[dim]) || []).map((s) => [s.key, s]));
+        const known = SLICES[dim];
+        const all = known.concat([...present.keys()].filter((k) => known.indexOf(k) < 0));
+        all.forEach((k, idx) => {
+          const s = present.get(k);
+          const name = known.indexOf(k) >= 0 ? esc(t(SLICE_KEY[dim](k))) : esc((s && s.label) || k);
+          let cells;
+          if (!s) cells = '<td class="num mono ink-4">&ndash;</td><td class="num mono ink-4">&ndash;</td><td colspan="2">' + mk("dashed", t("evals.neverMeasured"), "ghost") + '</td>';
+          else if (s.sample_too_small) cells = '<td class="num mono">' + (Number(s.scored) || 0) + '</td><td class="num mono">' + (Number(s.abstained) || 0) + '</td><td colspan="2">' + mk("hatch", t("evals.withheld", { n: Number(s.scored) || 0 }), "held") + '</td>';
+          else cells = '<td class="num mono">' + Number(s.scored) + '</td><td class="num mono">' + (Number(s.abstained) || 0) + '</td><td><span class="mono">' + pctOf(s.floor_correct / s.scored) + '</span></td><td><span class="mono">' + pctOf(s.in_band / s.scored) + '</span></td>';
+          rows += '<tr' + (idx === 0 ? ' class="ev-grp"' : '') + '><td class="ev-dimlbl t-label">' + (idx === 0 ? esc(dimLabel) : '') + '</td><td>' + name + '</td>' + cells + '</tr>';
+        });
+      }
+      return rows;
+    }
+    function calTable(cal) {
+      return (cal || []).map((b) => {
+        const name = ["high", "mid", "low"].indexOf(b.key) >= 0 ? esc(t("evals.cal." + b.key)) : esc(b.label || b.key);
+        let obs;
+        if (!b.n) obs = mk("dashed", t("evals.neverMeasured"), "ghost");
+        else if (b.sample_too_small) obs = mk("hatch", t("evals.withheld", { n: b.n }), "held");
+        else obs = '<span class="mono">' + pctOf(b.in_band / b.n) + '</span>';
+        const claimed = b.claimed != null ? '<span class="mono">' + Number(b.claimed).toFixed(2) + '</span>' : GHOST;
+        return '<tr><td>' + name + '</td><td class="num mono">' + (Number(b.n) || 0) + '</td><td class="num">' + claimed + '</td><td>' + obs + '</td></tr>';
+      }).join("");
+    }
+    function rebuildSeg(seg) {
+      LAST_SEG = seg || LAST_SEG;
+      const host = document.getElementById("ev-seg");
+      if (!host) return;
+      host.innerHTML =
+        '<div class="tbl-wrap"><table class="tbl tbl-dense ev-segtbl"><thead><tr><th></th><th>' + esc(t("evals.colSlice")) + '</th><th class="num">' + esc(t("evals.colScored")) + '</th><th class="num">' + esc(t("evals.colAbst")) + '</th><th>' + esc(t("eval.floorCall")) + '</th><th>' + esc(t("eval.inBandCol")) + '</th></tr></thead><tbody>' + segTable(LAST_SEG) + '</tbody></table></div>' +
+        '<p class="ev-note" id="ev-blind" hidden></p>' +
+        '<h3 class="t-label ev-cal-h">' + esc(t("evals.dim.calibration")) + '</h3>' +
+        '<div class="tbl-wrap"><table class="tbl tbl-dense ev-caltbl"><thead><tr><th>' + esc(t("evals.calBucket")) + '</th><th class="num">' + esc(t("evals.colScored")) + '</th><th class="num">' + esc(t("evals.colClaimed")) + '</th><th>' + esc(t("evals.colObserved")) + '</th></tr></thead><tbody>' + calTable(LAST_SEG && LAST_SEG.calibration) + '</tbody></table></div>' +
+        '<p class="ev-note">' + esc(t("evals.calNote")) + '</p>';
+      renderBlind();
+    }
+
+    /* ---- latest eval, rebuilt after a run ---- */
+    function goldByDomain(d) { return GOLD.find((x) => x.domain === d) || null; }
+    function evalTable(items) {
+      const cols = [t("eval.merchant"), t("eval.disclosed"), t("eval.predicted"), t("eval.inBandCol"), t("eval.floorCall"), t("eval.checkIt")];
+      const rows = (items || []).map((i) => {
+        const g = goldByDomain(i.domain);
+        const per = g && g.period ? String(g.period).split(" (")[0] : "";
+        const abst = !!i.abstained;
+        const inBand = abst ? mk("hatch", t("eval.vAbstained"), "held")
+          : i.in_band ? mk("filled", t("eval.vInBand"), "ok") : mk("hollow", t("eval.vOutside"), "bad");
+        const floorCall = abst ? mk("hatch", t("eval.vAbstained"), "held")
+          : i.floor_correct ? mk("filled", t("eval.vCorrect"), "ok") : mk("hollow", t("eval.vWrong"), "bad");
+        const acc = abst ? "held" : (i.floor_correct ? "ok" : "bad");
+        return '<tr class="row-acc-' + acc + '" data-id="' + esc(i.domain) + '">' +
+          '<td>' + esc((g && g.name) || i.domain) + '</td>' +
+          '<td class="num"><span class="mono">' + esc(fmtCount(i.truth)) + '</span>' + (per ? '<div class="ev-per mono ink-4">' + esc(per) + '</div>' : '') + '</td>' +
+          '<td class="num mono">' + (abst ? GHOST : '<span class="mono">' + esc(fmtCount(i.pred_min)) + '&ndash;' + esc(fmtCount(i.pred_max)) + '</span>') + '</td>' +
+          '<td>' + inBand + '</td><td>' + floorCall + '</td>' +
+          '<td>' + (i.source_url ? '<a class="mono" href="' + esc(i.source_url) + '" target="_blank" rel="noopener">' + esc(hostOf(i.source_url)) + ' &#8599;</a>' : GHOST) + '</td></tr>';
+      }).join("");
+      return '<div class="tbl-wrap"><table class="tbl tbl-ruled"><thead><tr>' +
+        cols.map((c, i) => '<th' + (i === 1 || i === 2 ? ' class="num"' : '') + '>' + esc(c) + '</th>').join("") +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+    function readings(items) {
+      const misses = (items || []).filter((i) => !i.abstained && !i.in_band && i.truth != null);
+      if (!misses.length) return "";
+      const lines = misses.map((i) => {
+        const mid = i.pred_mid != null ? i.pred_mid : ((Number(i.pred_min) + Number(i.pred_max)) / 2);
+        const p = mid > 0 ? Math.round(Math.abs(i.truth / mid - 1) * 100) + "%" : "";
+        const key = i.truth > mid ? "evals.missAbove" : "evals.missBelow";
+        const g = goldByDomain(i.domain);
+        const sentence = t(key, { d: (g && g.name) || i.domain, t: fmtCount(i.truth), p: p, m: fmtCount(mid) });
+        return '<p class="ev-read"><b>' + esc(sentence) + '</b> ' + esc(t(i.floor_correct ? "evals.missFloorOk" : "evals.missFloorBad")) + '</p>';
+      }).join("");
+      return '<div class="ev-reads">' + lines + '<p class="ev-read ink-3">' + esc(t("evals.missWhy")) + '</p></div>';
+    }
+    function renderLatestEval(res) {
+      const body = document.getElementById("eval-body");
+      if (body) body.innerHTML = evalTable(res.items) + readings(res.items);
+      const sub = document.getElementById("eval-sub");
+      if (sub) sub.textContent = t("eval.runMeta", { n: res.n, date: new Date().toISOString().slice(0, 10) });
+      const headStat = (a, b) => b >= MIN_HEADLINE_N ? pctOf(a / b) : a + "/" + b;
+      setStat(0, res.n_scored != null ? headStat(res.floor_correct, res.n_scored) : null,
+        res.n_scored >= MIN_HEADLINE_N ? t("eval.ofScored", { a: res.floor_correct, b: res.n_scored }) : t("evals.rateWithheld", { n: res.n_scored }));
+      setStat(1, res.n_scored != null ? headStat(res.in_band, res.n_scored) : null,
+        res.n_scored >= MIN_HEADLINE_N ? t("eval.ofN", { a: res.in_band, b: res.n_scored }) : t("evals.rateWithheld", { n: res.n_scored }));
+      setStat(2, res.n != null ? headStat(res.abstained, res.n) : null, t("eval.reported"));
+      if (res.segments) rebuildSeg(res.segments);
+    }
 
     /* ---- field errors, rendered under the field the API named ---- */
     function clearFieldError(inputId) {
@@ -856,8 +1222,7 @@ export function script() {
     }
     function applyServerError(prefix, data) {
       const map = { disclosed_value: "value", source_url: "url", domain: "domain" };
-      const suf = map[data.field] || "value";
-      setFieldError(prefix + "-" + suf, mapServerMessage(data.field, data.error));
+      setFieldError(prefix + "-" + (map[data.field] || "value"), mapServerMessage(data.field, data.error));
     }
 
     async function postJson(path, body) {
@@ -867,7 +1232,7 @@ export function script() {
       return { ok: r.ok && data && data.ok !== false, status: r.status, data: data || {} };
     }
 
-    /* ---- open dialogs, prefilled ---- */
+    /* ---- dialogs, prefilled ---- */
     function openVerify(id) {
       const g = goldById(id);
       if (!g) return;
@@ -895,7 +1260,7 @@ export function script() {
       document.getElementById("gold-edit-dlg").showModal();
     }
     function openAdd() {
-      ["ga-domain"].forEach(clearFieldError);
+      clearFieldError("ga-domain");
       $("#ga-domain").value = ""; $("#ga-name").value = ""; $("#ga-metric").value = ""; $("#ga-note").value = "";
       document.getElementById("gold-add-dlg").showModal();
     }
@@ -912,37 +1277,38 @@ export function script() {
       if (!value) { setFieldError("gv-value", t("evals.errNeedValue")); bad = true; }
       if (!url) { setFieldError("gv-url", t("evals.errNeedSource")); bad = true; }
       if (bad) return;
-      const body = {
+      const { ok, data } = await postJson("/api/gold/" + id, {
         disclosed_metric: $("#gv-metric").value.trim() || null,
         disclosed_value: value,
         period: $("#gv-period").value.trim() || null,
         source_url: url,
         source_note: $("#gv-note").value.trim() || null,
         verified: true,
-      };
-      const { ok, data } = await postJson("/api/gold/" + id, body);
+      });
       if (!ok) { applyServerError("gv", data); return; }
-      updateGoldRow(data.after);
+      mergeGold(data.after);
+      rebuildGold(data.after.id);
+      refreshSuggest();
       document.getElementById("gold-verify-dlg").close();
       if (window.Floor) window.Floor.toast(t("evals.toastVerified", { domain }), {
-        undo: () => postJson("/api/gold/" + id, { verified: false }).then(({ data: d }) => d.after && updateGoldRow(d.after)),
+        undo: () => postJson("/api/gold/" + id, { verified: false }).then(({ data: d }) => { if (d.after) { mergeGold(d.after); rebuildGold(d.after.id); refreshSuggest(); } }),
       });
     }
     async function submitEdit(e) {
       e.preventDefault();
       const id = $("#ge-id").value;
       const domain = $("#ge-domain").textContent;
-      ["ge-value"].forEach(clearFieldError);
-      const body = {
+      clearFieldError("ge-value");
+      const { ok, data } = await postJson("/api/gold/" + id, {
         disclosed_metric: $("#ge-metric").value.trim() || null,
         disclosed_value: $("#ge-value").value.trim(),
         period: $("#ge-period").value.trim() || null,
         source_url: $("#ge-url").value.trim() || null,
         source_note: $("#ge-note").value.trim() || null,
-      };
-      const { ok, data } = await postJson("/api/gold/" + id, body);
+      });
       if (!ok) { applyServerError("ge", data); return; }
-      updateGoldRow(data.after);
+      mergeGold(data.after);
+      rebuildGold(data.after.id);
       document.getElementById("gold-edit-dlg").close();
       if (window.Floor) window.Floor.toast(t("evals.toastCorrected", { domain }));
     }
@@ -951,15 +1317,16 @@ export function script() {
       clearFieldError("ga-domain");
       const domain = $("#ga-domain").value.trim();
       if (!domain.includes(".")) { setFieldError("ga-domain", t("evals.errBadDomain")); return; }
-      const body = {
+      const { ok, data } = await postJson("/api/gold/add", {
         domain,
         name: $("#ga-name").value.trim() || null,
         disclosed_metric: $("#ga-metric").value.trim() || null,
         source_note: $("#ga-note").value.trim() || null,
-      };
-      const { ok, data } = await postJson("/api/gold/add", body);
+      });
       if (!ok) { applyServerError("ga", data); return; }
-      updateGoldRow(data.row);
+      mergeGold(data.row);
+      rebuildGold(data.row.id);
+      refreshSuggest();
       document.getElementById("gold-add-dlg").close();
       if (window.Floor) window.Floor.toast(t("evals.toastAdded", { domain: data.row.domain }));
     }
@@ -971,39 +1338,40 @@ export function script() {
     const gaBtn = document.querySelector('[data-action="gold:add"]');
     if (gaBtn) gaBtn.addEventListener("click", submitAdd);
 
-    document.addEventListener("floor:action", async (e) => {
-      const { action, id } = e.detail || {};
-      if (!action) return;
-      if (action === "gold:extract") {
-        // Establishing truth reads a filing and costs a fraction of a cent, so
-        // it confirms nothing and simply runs, then reloads the row in place.
-        const el = e.detail?.el || document.querySelector('[data-action="gold:extract"][data-domain="' + (e.detail?.domain || "") + '"]');
-        const domain = e.detail?.domain || el?.getAttribute("data-domain");
-        if (!domain) return;
-        if (el) { el.disabled = true; el.textContent = T("evals.establishing", "Reading filings\u2026"); }
-        try {
-          const r = await fetch("/api/truth/" + encodeURIComponent(domain), { method: "POST" }).then((x) => x.json());
-          if (!r.ok) {
-            Floor.toast(T("evals.establishFail", "No figure found: {n}", { n: (r.note || r.error || "").slice(0, 120) }));
-            if (el) { el.disabled = false; el.textContent = T("evals.establish", "Establish from filings"); }
-            return;
-          }
-          Floor.toast(T("evals.establishOk", "{d} established at {n} per month", {
-            d: domain, n: Number(r.monthly).toLocaleString(),
-          }));
-          // In place, like every other mutation on this page. A reload here
-          // would be the rule this product enforces everywhere else, broken by
-          // the person who wrote the rule.
-          const fresh = await fetch("/api/gold").then((x) => x.json());
-          const row = (fresh.rows || []).find((x) => x.domain === domain);
-          if (row) updateGoldRow(row);
-          refreshAggregates();
-        } catch (err) {
-          Floor.toast(T("common.notSaved", "Not saved: {err}", { err: err.message }));
-          if (el) { el.disabled = false; el.textContent = T("evals.establish", "Establish from filings"); }
+    /* ---- establish from filings: the normal path. Costs a fraction of
+       a cent and reads a public document, so it runs without a confirm
+       and reports its result in place. ---- */
+    async function establish(id, el) {
+      const g = goldById(id);
+      if (!g) return;
+      const prog = el && el.parentElement ? el.parentElement.querySelector(".ev-rowprog") : null;
+      if (el) { el.disabled = true; el.setAttribute("aria-busy", "true"); }
+      if (prog) { prog.hidden = false; prog.classList.add("is-running"); }
+      try {
+        const r = await fetch("/api/truth/" + encodeURIComponent(g.domain), { method: "POST" }).then((x) => x.json());
+        if (!r.ok) {
+          if (window.Floor) window.Floor.toast(t("evals.establishFail", { n: String(r.note || r.error || "").slice(0, 140) }));
+          return;
         }
-        return;
+        if (window.Floor) window.Floor.toast(t("evals.establishOk", { d: g.domain, n: num(r.monthly) }));
+        const fresh = await fetch("/api/gold").then((x) => x.json());
+        const row = (fresh.rows || []).find((x) => x.domain === g.domain);
+        if (row) { mergeGold(row); rebuildGold(row.id); }
+        refreshSuggest();
+      } catch (err) {
+        if (window.Floor) window.Floor.toast(t("common.notSaved", { err: err.message }));
+      } finally {
+        // on success the region was rebuilt and these nodes are gone;
+        // on failure they are still here and come back to rest
+        if (el && el.isConnected) { el.disabled = false; el.removeAttribute("aria-busy"); }
+        if (prog && prog.isConnected) { prog.classList.remove("is-running"); prog.hidden = true; }
       }
+    }
+
+    document.addEventListener("floor:action", async (e) => {
+      const { action, id, el } = e.detail || {};
+      if (!action) return;
+      if (action === "gold:extract") return establish(id, el);
       if (action === "gold:openVerify") return openVerify(id);
       if (action === "gold:openEdit") return openEdit(id);
       if (action === "gold:openAdd") return openAdd();
@@ -1011,9 +1379,11 @@ export function script() {
         const g = goldById(id);
         const { ok, data } = await postJson("/api/gold/" + id, { verified: false });
         if (!ok) { if (window.Floor) window.Floor.toast(data.error || t("evals.errGeneric")); return; }
-        updateGoldRow(data.after);
+        mergeGold(data.after);
+        rebuildGold(data.after.id);
+        refreshSuggest();
         if (window.Floor) window.Floor.toast(t("evals.toastUnverified", { domain: g ? g.domain : "" }), {
-          undo: () => postJson("/api/gold/" + id, { verified: true }).then(({ data: d }) => d.after && updateGoldRow(d.after)),
+          undo: () => postJson("/api/gold/" + id, { verified: true }).then(({ data: d }) => { if (d.after) { mergeGold(d.after); rebuildGold(d.after.id); refreshSuggest(); } }),
         });
         return;
       }
@@ -1022,9 +1392,10 @@ export function script() {
         const g = goldById(id);
         const { ok, data } = await postJson("/api/gold/" + id + "/archive", { on });
         if (!ok) { if (window.Floor) window.Floor.toast(data.error || t("evals.errGeneric")); return; }
-        updateGoldRow(data.row);
+        mergeGold(data.row);
+        rebuildGold(data.row.id);
         if (window.Floor) window.Floor.toast(t(on ? "evals.toastRemoved" : "evals.toastRestored", { domain: g ? g.domain : "" }), {
-          undo: () => postJson("/api/gold/" + id + "/archive", { on: !on }).then(({ data: d }) => d.row && updateGoldRow(d.row)),
+          undo: () => postJson("/api/gold/" + id + "/archive", { on: !on }).then(({ data: d }) => { if (d.row) { mergeGold(d.row); rebuildGold(d.row.id); } }),
         });
         return;
       }
@@ -1054,31 +1425,6 @@ export function script() {
       } finally {
         if (prog) { prog.classList.remove("is-running"); prog.hidden = true; }
       }
-    }
-
-    function renderLatestEval(res) {
-      const body = document.getElementById("eval-body");
-      if (!body) return;
-      const cols = [
-        t("eval.merchant"), t("eval.disclosed"), t("eval.predicted"),
-        t("eval.inBandCol"), t("eval.floorCall"), t("eval.checkIt"),
-      ];
-      const rows = (res.items || []).map((i) => {
-        const abstained = !!i.abstained;
-        const inBand = abstained ? mk("hatch", t("eval.vAbstained"), "held")
-          : i.in_band ? mk("filled", t("eval.vInBand"), "ok") : mk("hollow", t("eval.vOutside"), "bad");
-        const floorCall = abstained ? mk("hatch", t("eval.vAbstained"), "held")
-          : i.floor_correct ? mk("filled", t("eval.vCorrect"), "ok") : mk("hollow", t("eval.vWrong"), "bad");
-        const rowCls = "row-acc-" + (abstained ? "held" : (i.floor_correct ? "ok" : "bad"));
-        return '<tr class="' + rowCls + '"><td>' + esc(i.domain) + '</td>' +
-          '<td class="num mono">' + esc(fmtCount(i.truth)) + '</td>' +
-          '<td class="num mono">' + (abstained ? '<span class="ink-4">&ndash;</span>' : esc(fmtCount(i.pred_min)) + '&ndash;' + esc(fmtCount(i.pred_max))) + '</td>' +
-          '<td>' + inBand + '</td><td>' + floorCall + '</td>' +
-          '<td>' + (i.source_url ? '<a class="mono" href="' + esc(i.source_url) + '" target="_blank" rel="noopener">' + esc(hostOf(i.source_url)) + ' &#8599;</a>' : '<span class="ink-4">&ndash;</span>') + '</td></tr>';
-      }).join("");
-      body.innerHTML = '<div class="tbl-wrap"><table class="tbl tbl-dense tbl-ruled"><thead><tr>' +
-        cols.map((c, i) => '<th' + (i === 1 || i === 2 ? ' class="num"' : '') + '>' + esc(c) + '</th>').join("") +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     }
   })();`;
 }
