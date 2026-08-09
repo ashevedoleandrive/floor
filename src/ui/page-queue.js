@@ -258,7 +258,9 @@ export function css() {
   .p-queue .q-fit .gauge .g-fl { top: 0; bottom: 0; }
   .p-queue .q-fit .gauge .g-slot { top: 0; }
   .p-queue .q-fit .gauge .g-over { top: 0; }
+  .p-queue .q-fit-none { display: flex; align-items: center; min-height: 26px; }
   .p-queue .q-fit-word { font-size: 12px; color: var(--held); margin-bottom: 2px; display: block; }
+  .p-queue .q-t { min-width: 0; }
   .p-queue .q-t-k { display: block; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .p-queue .q-t-d { display: block; font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
   .p-queue .q-cd .mk { font-size: 12px; }
@@ -518,7 +520,14 @@ export function script() {
           var c = q('.row-sel[data-id="' + cssEsc(id) + '"]');
           if (c) { c.checked = true; last = c; }
         });
-        if (last) last.dispatchEvent(new Event("change", { bubbles: true }));
+        if (last) {
+          last.dispatchEvent(new Event("change", { bubbles: true }));
+        } else {
+          /* every selected row left the fresh render (archived, filtered
+             out server-side): the bulk bar must die with the selection */
+          var bar = q("#bulkbar");
+          if (bar) bar.remove();
+        }
       })
       .catch(function () {});
   }

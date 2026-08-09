@@ -45,11 +45,7 @@ const API = [
  * deliberate edit here rather than silently reducing coverage.
  */
 const REQUIRED = {
-  "/": [
-    "#qbody", "#assess-form", "#assess-domain", "#assess-out",
-    "#add-dlg", "#add-text", "#add-go", "#cooldown",
-    "[data-f]", "tr.r", "a[href='/api/export.csv']",
-  ],
+  "/": ["#q-main", "#q-meta", "#q-data", "a[href='/api/export.csv']"],
   "/backlog": ["#card-add", "#card-edit", "#bl-add-open", "#bl-arch-toggle", "#bl-header-count", "#c-area", "#c-status"],
   // Rebuilt pages bind different elements than the ones they replaced. Leaving
   // the old ids here would fail forever on a page that is working correctly,
@@ -92,8 +88,12 @@ function hasSelector(html, sel) {
 }
 
 function internalLinks(html) {
+  // Strip scripts first. A page's client code builds hrefs by concatenation, so
+  // the raw source contains fragments like href="/account/ that are never a real
+  // link. Scanning them reported a 404 on a page whose links were all fine.
+  const markup = html.replace(/<script[\s\S]*?<\/script>/g, "");
   const out = new Set();
-  for (const m of html.matchAll(/href=["'](\/[^"'#?]*)["']/g)) out.add(m[1]);
+  for (const m of markup.matchAll(/href=["'](\/[^"'#?]*)["']/g)) out.add(m[1]);
   return [...out];
 }
 
@@ -186,8 +186,14 @@ async function main() {
   const JS_HOOKS = new Set();
   try {
     const fjs = readFileSync(new URL("../public/static/floor.js", import.meta.url), "utf8");
-    for (const m of fjs.matchAll(/closest\(["']\.([\w-]+)["']\)|querySelectorAll?\(["']\.([\w-]+)["']\)/g))
-      JS_HOOKS.add(m[1] || m[2]);
+    // Every way floor.js reaches for a class: closest, querySelector(All), its
+    // own $/$$ helpers, matches, and classList. Catching only two of them
+    // reported the selection checkboxes as unstyled when they are pure hooks.
+    for (const m of fjs.matchAll(
+      /(?:closest|querySelectorAll?|matches|\$\$?)\(\s*["'`]([^"'`]*?)["'`]/g
+    )) for (const cls of (m[1].match(/\.([\w-]+)/g) || [])) JS_HOOKS.add(cls.slice(1));
+    for (const m of fjs.matchAll(/classList\.(?:add|remove|toggle|contains)\(\s*["']([\w-]+)["']/g))
+      JS_HOOKS.add(m[1]);
   } catch { /* foundation not built yet */ }
 
   console.log("\nEvery class in the markup is actually styled");

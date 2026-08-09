@@ -18,6 +18,7 @@ import * as pageSettings from "./ui/page-settings.js";
 import * as pageSources  from "./ui/page-sources.js";
 import * as pageWired    from "./ui/page-wired.js";
 import * as pageBacklog  from "./ui/page-backlog.js";
+import * as pageQueue    from "./ui/page-queue.js";
 import {
   updateAccount, archiveAccount, unarchiveAccount, assessmentHistory,
   deleteAssessment, restoreAssessment, updateGold, addGold, archiveGold,
@@ -40,6 +41,7 @@ const html = (body) =>
  * collide over a shared loader. Adding a page is one line here and one new file.
  */
 const PAGES = {
+  "/":         { mod: pageQueue,    data: (env) => buildQueue(env) },
   "/coverage": { mod: pageCoverage, data: (env) => computeCoverage(env) },
   "/settings": { mod: pageSettings, data: (env) => settingsData(env) },
   "/sources":  { mod: pageSources,  data: () => sourceSummary() },
