@@ -50,10 +50,6 @@ export const keys = {
     en: "{total} cards · {live} live",
     es: "{total} tarjetas · {live} en producción",
   },
-  "bl.lede": {
-    en: "Every card names the gap it closes and the number it moves. A build that cannot answer both does not belong on the board.",
-    es: "Cada tarjeta nombra la brecha que cierra y el número que mueve. Un build que no puede responder las dos cosas no pertenece al tablero.",
-  },
 
   /* stages: the columns */
   "bl.col.idea":     { en: "Idea", es: "Idea" },
@@ -65,18 +61,9 @@ export const keys = {
   "bl.cardsAria":     { en: "{n} cards", es: "{n} tarjetas" },
 
   /* empty stages: a waiting state, not a void */
-  "bl.empty.idea": {
-    en: "Nothing waiting. The next gap you can name in one sentence belongs here.",
-    es: "Nada en espera. La próxima brecha que puedas nombrar en una frase va aquí.",
-  },
-  "bl.empty.building": {
-    en: "Nothing under construction. Move a card here the day the work starts.",
-    es: "Nada en construcción. Mueve una tarjeta aquí el día que empieza el trabajo.",
-  },
-  "bl.empty.live": {
-    en: "Nothing shipped yet. A card lands here when it runs in production.",
-    es: "Nada entregado todavía. Una tarjeta llega aquí cuando corre en producción.",
-  },
+  "bl.empty.idea":     { en: "Nothing waiting.", es: "Nada en espera." },
+  "bl.empty.building": { en: "Nothing under construction.", es: "Nada en construcción." },
+  "bl.empty.live":     { en: "Nothing shipped yet.", es: "Nada entregado todavía." },
   "bl.emptyFiltered": {
     en: "No {area} cards at this stage.",
     es: "No hay tarjetas de {area} en esta etapa.",
@@ -333,8 +320,6 @@ export async function render(env, data, ctx) {
       </div>
     </div>
 
-    <p class="bl-lede t-body ink-2">${esc(t("bl.lede"))}</p>
-
     <nav class="tabs bl-filter" id="bl-filter" aria-label="${esc(t("bl.filterAria"))}">${tabs}</nav>
 
     <div class="bl-board" id="bl-board">${boardHtml(visible, t, "")}</div>
@@ -351,7 +336,6 @@ export async function render(env, data, ctx) {
 
 export function css() {
   return `
-  .p-backlog .bl-lede { margin-top: 12px; max-width: 74ch; }
   .p-backlog .bl-filter { margin-top: 24px; }
 
   /* the board: three stages, hairline-separated, no boxes (§3.2) */

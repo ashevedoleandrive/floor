@@ -36,13 +36,24 @@ import { esc, num, money, well, field, statRow, section } from "./kit.js";
 export const meta = {
   route: "/model",
   nav: "/model",
-  titleKey: "nav.impact",
+  titleKey: "nav.case",
 };
 
 export const keys = {
+  /* one hero for both halves of the case, where there used to be two
+     40px heroes on two tabs saying the same beat twice */
+  "cs.title": {
+    en: "What it is worth now, and wired.",
+    es: "Lo que vale ahora, y conectado.",
+  },
+  "cs.lede": {
+    en: "Change any input and every output recomputes. Average contract value stays blank until you type it.",
+    es: "Cambia cualquier entrada y todas las salidas se recalculan. El valor promedio de contrato queda en blanco hasta que lo escribas.",
+  },
+  /* measured against assumed, carried on the group labels it describes */
   "m.measureVsAssume": {
-    en: "One number below is measured: cost per account, pulled from real token counts across every run Floor has made. Minutes saved and both conversion rates are judgement calls you are choosing to test.",
-    es: "Un número aquí abajo es medido: el costo por cuenta, sacado de conteos reales de tokens en cada análisis que Floor ha hecho. Los minutos ahorrados y ambas tasas de conversión son juicios que tú eliges poner a prueba.",
+    en: "One number here is measured: cost per account, from real token counts across every run. Minutes saved and both conversion rates are judgement calls you are choosing to test.",
+    es: "Un número aquí es medido: el costo por cuenta, de conteos reales de tokens en cada análisis. Los minutos ahorrados y ambas tasas de conversión son juicios que tú eliges poner a prueba.",
   },
   "m.measuredNote": {
     en: "Measured from {n} of {of} accounts Floor has actually assessed, {total} spent in total. Override it if your real cost differs.",
@@ -51,6 +62,34 @@ export const keys = {
   "m.outputsLabel": {
     en: "What it is worth",
     es: "Lo que vale",
+  },
+  /* the page's one authored argument, where the value figure lands */
+  "cs.lever": {
+    en: "The floor filter is the win-rate lever: a merchant under the floor cannot become a customer, so every hour spent on one is a hole in the win rate by construction.",
+    es: "El filtro del umbral es la palanca de la tasa de cierre: un comercio bajo el umbral no puede volverse cliente, así que cada hora invertida en uno es un hueco en la tasa de cierre por construcción.",
+  },
+  /* absorbed from Day one, which was the same argument on a second tab */
+  "cs.wiredSub": {
+    en: "public sources, free tiers, no access to your production systems",
+    es: "fuentes públicas, planes gratuitos, sin acceso a tus sistemas de producción",
+  },
+  "w.sysLabel": { en: "System by system", es: "Sistema por sistema" },
+  "w.honestLabel": { en: "Scope and limits", es: "Alcance y límites" },
+  "w.regs.name": {
+    en: "SEC EDGAR & the EU statutory registries",
+    es: "SEC EDGAR y los registros estatutarios de la UE",
+  },
+  "w.regs.now": {
+    en: "SEC EDGAR is connected: US filers resolve from a filed figure before any search runs. The EU registries are not.",
+    es: "SEC EDGAR está conectado: los emisores de EE. UU. se resuelven con una cifra presentada antes de cualquier búsqueda. Los registros de la UE no.",
+  },
+  "w.regs.later": {
+    en: "In Europe the EU Accounting Directive puts filed accounts behind a public registry per country (Germany's Bundesanzeiger, the Dutch Chamber of Commerce, France's Commercial Court): the single biggest coverage gain available in this system, for free. Neither reaches a private US company or fills LATAM, APAC or AMEA.",
+    es: "En Europa la Directiva de Contabilidad de la UE pone las cuentas presentadas detrás de un registro público por país (el Bundesanzeiger en Alemania, la Cámara de Comercio en Holanda, el Tribunal de Comercio en Francia): la mayor ganancia de cobertura disponible en este sistema, y gratis. Ninguno llega a una empresa privada de EE. UU. ni llena LATAM, APAC o AMEA.",
+  },
+  "w.h0": {
+    en: "Floor ranks the account universe you give it. It does not build one: today's {n} accounts were seeded by hand, and Apollo or Sales Navigator is what would generate that universe at Yuno's real scale.",
+    es: "Floor clasifica el universo de cuentas que le das. No construye uno: las {n} cuentas de hoy se sembraron a mano, y Apollo o Sales Navigator serían lo que genere ese universo a la escala real de Yuno.",
   },
 };
 
@@ -84,6 +123,7 @@ const signedDec1 = (n) => `${n < 0 ? "-" : "+"}${Math.abs(n).toFixed(1)}`;
 export async function render(env, data, ctx) {
   const { t } = ctx;
   const q = data || {};
+  const totalAccounts = q.cost?.total_accounts ?? q.rows?.length ?? 0;
   const cost = q.cost || { per_account: 0, assessed: 0, total_accounts: 0, total: 0 };
   const acvRaw = q.settings?.acv_usd;
   const acv0 = acvRaw !== "" && acvRaw != null && !Number.isNaN(Number(acvRaw)) ? Number(acvRaw) : 0;
@@ -109,15 +149,18 @@ export async function render(env, data, ctx) {
     ? t("m.ratio", { w: D.win2, r: num(Math.round(r.ratio)) })
     : t("m.noInvent");
 
+  /* the measured-against-assumed distinction rides on the group labels
+     it describes, instead of standing above them as a paragraph */
+  const groupTip = esc(t("m.measureVsAssume"));
+
   const inputsWell = well(`
-    <p class="m-note t-body">${esc(t("m.measureVsAssume"))}</p>
-    <span class="m-grp t-label">${esc(t("m.grpToday"))}</span>
+    <span class="m-grp t-label" title="${groupTip}">${esc(t("m.grpToday"))}</span>
     ${field({ id: "m-sdrs", label: t("m.sdrs"), value: D.sdrs, type: "number", min: 0, step: 1, mono: true })}
     ${field({ id: "m-worked", label: t("m.worked"), value: D.worked, type: "number", min: 0, step: 1, mono: true })}
     ${field({ id: "m-mins", label: t("m.mins"), value: D.mins, type: "number", min: 0, step: 1, mono: true })}
     ${field({ id: "m-conv", label: t("m.conv"), value: D.conv, type: "number", min: 0, step: 0.1, suffix: "%", mono: true })}
     ${field({ id: "m-win", label: t("m.win"), value: D.win, type: "number", min: 0, step: 0.1, suffix: "%", mono: true })}
-    <span class="m-grp t-label">${esc(t("m.grpFloor"))}</span>
+    <span class="m-grp t-label" title="${groupTip}">${esc(t("m.grpFloor"))}</span>
     ${field({ id: "m-mins2", label: t("m.mins"), value: D.mins2, type: "number", min: 0, step: 1, mono: true })}
     ${field({ id: "m-conv2", label: t("m.conv"), value: D.conv2, type: "number", min: 0, step: 0.1, suffix: "%", mono: true })}
     ${field({ id: "m-win2", label: t("m.winTarget"), value: D.win2, type: "number", min: 0, step: 0.1, suffix: "%", mono: true })}
@@ -151,11 +194,43 @@ export async function render(env, data, ctx) {
     },
   ]);
 
+  /* Day one, absorbed: the same argument one beat later. Six systems as
+     one aligned Today / Wired list, then what the 48 hours did not buy. */
+  const systems = [
+    { name: "Salesforce", now: t("w.sf.now"), later: t("w.sf.later") },
+    { name: "Apollo", now: t("w.apollo.now"), later: t("w.apollo.later") },
+    { name: "Sales Navigator", now: t("w.notUsed"), later: t("w.nav.later") },
+    { name: "Gong Engage", now: t("w.notUsed"), later: t("w.gong.later") },
+    { name: t("w.bc.name"), now: t("w.bc.now"), later: t("w.bc.later") },
+    { name: t("w.regs.name"), now: t("w.regs.now"), later: t("w.regs.later") },
+  ];
+
+  const list = systems.map((s) => `
+    <div class="w-sys">
+      <h3 class="w-name t-section">${esc(s.name)}</h3>
+      <div class="w-row">
+        <span class="w-lbl t-label">${esc(t("w.today"))}</span>
+        <p class="w-txt t-body">${esc(s.now)}</p>
+      </div>
+      <div class="w-row w-wired">
+        <span class="w-lbl t-label">${esc(t("w.wired"))}</span>
+        <p class="w-txt t-body">${esc(s.later)}</p>
+      </div>
+    </div>`).join("");
+
+  const honest = [
+    t("w.h0", { n: num(totalAccounts) }),
+    t("w.h1"),
+    t("w.h2"),
+    t("w.h3"),
+    t("w.h4"),
+  ].map((line) => `<li>${esc(line)}</li>`).join("");
+
   const body = `
   <section class="m-hero">
     <span class="m-eyebrow t-label">${esc(t("m.eyebrow"))}</span>
-    <h1 class="m-h1">${esc(t("m.title"))}</h1>
-    <p class="m-lede t-body">${t("m.lede")}</p>
+    <h1 class="m-h1">${esc(t("cs.title"))}</h1>
+    <p class="m-lede t-body">${esc(t("cs.lede"))}</p>
   </section>
 
   <div class="m-grid">
@@ -168,10 +243,22 @@ export async function render(env, data, ctx) {
       <div class="m-out-row1">${outRow1}</div>
       <div class="m-out-row2">${outRow2}</div>
       <p id="o-ratio" class="t-body m-ratio">${esc(ratioTxt)}</p>
+      <p class="m-lever t-body">${esc(t("cs.lever"))}</p>
     </div>
   </div>
 
-  ${section({ body: `<p class="t-body">${t("m.argument")}</p>` })}
+  ${section({
+    label: t("w.sysLabel"),
+    title: t("w.title"),
+    sub: esc(t("cs.wiredSub")),
+    body: `<div class="w-list">${list}</div>`,
+  })}
+
+  ${section({
+    label: t("w.honestLabel"),
+    title: t("w.honestTitle"),
+    body: `<ul class="w-honest">${honest}</ul>`,
+  })}
   `;
 
   return body;
@@ -190,7 +277,6 @@ export function css() {
       gap: 48px; margin-top: 48px; align-items: start;
     }
     .p-model .m-in { display: flex; flex-direction: column; gap: 16px; }
-    .p-model .m-note { margin: 0 0 16px; color: var(--ink-2); }
     .p-model .m-grp { display: block; color: var(--ink-3); }
     .p-model .m-in .well .m-grp:not(:first-child) { margin-top: 4px; }
     .p-model .well .fld { margin: 0; }
@@ -207,6 +293,32 @@ export function css() {
     .p-model .m-ratio {
       margin: 8px 0 0; max-width: 56ch; color: var(--ink-2); font-size: 13px; line-height: 1.5;
     }
+    .p-model .m-lever {
+      margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line);
+      max-width: 56ch; color: var(--ink-1);
+    }
+
+    /* the wired comparison, absorbed from Day one */
+    .p-model .w-list { display: flex; flex-direction: column; gap: 32px; }
+    .p-model .w-sys { padding-top: 4px; }
+    .p-model .w-name { margin: 0 0 4px; color: var(--ink-1); }
+    .p-model .w-row {
+      display: grid; grid-template-columns: 96px 1fr; column-gap: 16px;
+      padding: 10px 0; border-top: 1px solid var(--line);
+    }
+    .p-model .w-lbl { color: var(--ink-3); padding-top: 2px; }
+    .p-model .w-txt { margin: 0; max-width: 68ch; color: var(--ink-2); }
+    .p-model .w-wired .w-txt {
+      border-left: 2px dashed var(--line-2); padding-left: 12px; color: var(--ink-1);
+    }
+    .p-model .w-honest { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    .p-model .w-honest li {
+      position: relative; padding-left: 18px; max-width: 64ch;
+      color: var(--ink-2); font-size: 14px; line-height: 1.55;
+    }
+    .p-model .w-honest li::before {
+      content: ""; position: absolute; left: 0; top: 7px; width: 6px; height: 6px; background: var(--ink-3);
+    }
 
     /* the recompute pulse: a colour transition, not a loop. A recomputed
        figure is a state change, and DESIGN-SPEC §4.7 keeps the 300ms
@@ -219,6 +331,9 @@ export function css() {
 
     @media (max-width: 860px) {
       .p-model .m-grid { grid-template-columns: 1fr; gap: 32px; }
+    }
+    @media (max-width: 640px) {
+      .p-model .w-row { grid-template-columns: 72px 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
       .p-model .stat-v, .p-model .m-ratio { transition: none; }

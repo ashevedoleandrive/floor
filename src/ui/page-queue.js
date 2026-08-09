@@ -21,7 +21,7 @@
 
 import {
   esc, count, money, pct, dateISO, host,
-  mark, gauge, statRow, section, well, table, btn, field, dialog, tabs,
+  mark, gauge, statRow, section, table, btn, field, dialog, tabs,
 } from "./kit.js";
 import { scoreTiming } from "../lib/scoring.js";
 
@@ -1170,22 +1170,26 @@ export async function render(env, data, ctx) {
       main = `<span class="t-label">${esc(T(BAND_KEY.unscored))}</span>
         <p class="t-body">${esc(T("xp.noRun"))}</p>`;
     } else {
+      /* every note under a figure is another figure or a plain refusal,
+         never a sentence arguing for the figure above it */
       const nSig = (r.signals || []).length;
+      const lo = r.txn_min ?? r.txn_mid;
+      const hi = r.txn_max ?? r.txn_mid;
       const dims = statRow([
         {
           label: T("dim.fit"),
           value: r.fit_score == null ? null : Number(r.fit_score).toFixed(2),
-          note: r.fit_score == null ? T("queue.abstainedShort") : T("dim.vsFloorLong", { floor: count(floor) }),
+          note: r.fit_score == null ? T("queue.abstainedShort") : T("dim.vsFloor", { floor: count(floor) }),
         },
         {
           label: T("dim.timing"),
           value: Number(r.timing_score || 0).toFixed(2),
-          note: nSig ? T("dim.signalsDecay", { n: nSig }) : T("dim.noDatedReason"),
+          note: nSig ? T("dim.signals", { n: nSig }) : T("dim.noDatedReason"),
         },
         {
           label: T("dim.confidence"),
           value: r.confidence == null ? null : pct(r.confidence),
-          note: T("dim.dampensLong"),
+          note: lo == null ? T("verdict.noEstimate") : T("q.rangeNote", { lo: count(lo), hi: count(hi) }),
         },
         {
           label: T("dim.region"),
@@ -1212,7 +1216,7 @@ export async function render(env, data, ctx) {
       return `<li><span class="t-label">${esc(T(kindKey))} · ${esc(when)}</span><p>${esc(s.description || "")}${link}</p></li>`;
     }).join("");
     const rail = `<span class="t-label">${esc(T("sig.title"))}</span>
-      ${sigs ? `<ul>${sigs}</ul>` : `<p class="q-none t-data">${esc(T("sig.none"))}</p>`}`;
+      ${sigs ? `<ul>${sigs}</ul>` : `<p class="q-none t-data">${esc(T("q.sigNone"))}</p>`}`;
 
     const actions = [
       btn(T("xp.openEvidence"), { kind: "text", href: acctHref }),
@@ -1241,26 +1245,56 @@ export async function render(env, data, ctx) {
 
   /* --------------------------- the bands --------------------------- */
 
+  /* the floor lives in the column header, where the gauge it governs is,
+     rather than in a sentence repeated under every band */
   const cols = [
     { label: "#", width: 40, align: "right" },
     { label: T("col.account") },
-    { label: T("col.estTxn"), width: 260 },
+    { label: T("q.colEst", { floor: count(floor) }), width: 260 },
     { label: T("col.timing"), width: 200 },
-    { label: T("col.cooldown"), width: 132 },
+    { label: T("col.cooldown"), width: 148 },
     { label: T("col.score"), width: 64, align: "right" },
   ];
 
   const bandCounts = {};
   for (const r of rows) bandCounts[r.band] = (bandCounts[r.band] || 0) + 1;
 
+  const median = (xs) => {
+    if (!xs.length) return null;
+    const s = xs.slice().sort((a, b) => a - b);
+    const h = Math.floor(s.length / 2);
+    return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+  };
+
+  /* A band header states a measurement of its own rows, not an argument
+     for why the band exists. The argument survives as the header's title,
+     one hover or focus away, which is where a first-time viewer finds it. */
+  const bandMeta = (band, bandRows) => {
+    if (band === "unscored") {
+      return per > 0
+        ? esc(T("q.bandCost", {
+            n: bandRows.length,
+            per: money(per, 4),
+            total: money(bandRows.length * per, 2),
+          }))
+        : "";
+    }
+    if (band === "needs_evidence") return esc(T("verdict.noEstimate"));
+    if (band === "suppressed") {
+      return `${esc(T("q.windowDays", { days }))} · <a href="/settings">${esc(T("nav.settings"))}</a>`;
+    }
+    const mids = bandRows.filter((r) => r.txn_mid != null).map((r) => Number(r.txn_mid));
+    const confs = bandRows.filter((r) => r.confidence != null).map((r) => Number(r.confidence));
+    if (!mids.length) return "";
+    return esc(T("q.bandMed", { mid: count(median(mids)), conf: pct(median(confs) ?? 0) }));
+  };
+
   const bandSection = (band, isFirst) => {
     const bandRows = rows.filter((r) => r.band === band);
     if (!bandRows.length) return "";
-    let rule = band === "unscored" && per > 0
+    const rule = band === "unscored" && per > 0
       ? T("rule.unscoredCost", { cost: perLabel })
       : T(BAND_RULE[band], { floor: count(floor), days });
-    let ruleHtml = esc(rule);
-    if (band === "suppressed") ruleHtml += ` · <a href="/settings">${esc(T("q.window"))}</a>`;
     const tbl = table({
       cols,
       rows: bandRows.map((r) => ({
@@ -1282,9 +1316,9 @@ export async function render(env, data, ctx) {
     return `<section class="q-band${isFirst ? " q-first" : ""}" data-band="${esc(band)}">
       <header class="q-bandh">
         <span class="q-sq q-sq-${esc(band)}" aria-hidden="true"></span>
-        <h2 class="t-section">${esc(T(BAND_KEY[band]))}</h2>
+        <h2 class="t-section" title="${esc(rule)}">${esc(T(BAND_KEY[band]))}</h2>
         <span class="q-bandn">${bandRows.length}</span>
-        <span class="q-bandr">${ruleHtml}</span>
+        <span class="q-bandm">${bandMeta(band, bandRows)}</span>
       </header>
       ${tbl}
       <div class="q-bandempty f-empty" hidden><p>${esc(T("q.filterEmpty"))}</p></div>
@@ -1300,22 +1334,33 @@ export async function render(env, data, ctx) {
 
   /* --------------------------- the chrome -------------------------- */
 
+  /* Four facts, no adjectives. The abstain rate sits beside the assessed
+     count so the product's honesty is a number here, not a paragraph. */
+  const abstainedN = Number(payload.counts?.needs_evidence ?? 0);
+  const metaLine = assessed > 0
+    ? T("q.meta", {
+        n: rows.length, a: assessed, ab: abstainedN,
+        r: pct(abstainedN / assessed), c: money(per, 4),
+      })
+    : T("q.metaNone", { n: rows.length });
+
   const whead = `<div class="whead">
     <div class="whead-t">
       <h1 class="t-title">${esc(T("nav.queue"))}</h1>
-      <span class="whead-meta" id="q-meta">${esc(T("q.meta", { n: rows.length, a: assessed, c: money(per, 4) }))}</span>
+      <span class="whead-meta" id="q-meta">${esc(metaLine)}</span>
     </div>
     <div class="whead-a">
+      ${btn(T("q.how"), { kind: "text", action: "toggle-intro", id: "q-how" })}
       ${btn(T("action.export"), { kind: "quiet", href: "/api/export.csv" })}
       ${btn(T("action.addAccounts"), { kind: "primary", action: "open-add" })}
     </div>
   </div>`;
 
-  /* first-run strip: server renders it hidden; the client shows it until
-     it is dismissed once (localStorage), so visit forty skips the pitch */
+  /* The pitch, folded away. It never renders at rest; the header control
+     opens it for whoever is seeing the tool for the first time. */
   const intro = `<div id="q-intro" class="q-intro well" hidden>
     <p>${T("queue.lede")}</p>
-    ${btn(T("q.introDismiss"), { kind: "text", action: "dismiss-intro" })}
+    <p>${esc(T("queue.foot"))}</p>
   </div>`;
 
   const assessBar = `<div class="q-assess well">
@@ -1327,8 +1372,8 @@ export async function render(env, data, ctx) {
       ${btn(T("action.assess"), { kind: "primary", id: "assess-go", type: "submit", disabled: cached })}
     </form>
     ${cached
-      ? `<div class="q-assess-cached">${mark("half", T("chrome.capReached"), { tone: "warn" })}<span>${esc(T("q.cachedNote"))}</span></div>`
-      : `<p class="q-assess-note">${esc(per > 0 ? T("q.assessNote", { cost: perLabel }) : T("queue.runNote"))}</p>`}
+      ? `<div class="q-assess-cached">${mark("half", T("chrome.capReached"), { tone: "warn" })}<span>${esc(T("q.cachedShort"))}</span></div>`
+      : `<p class="q-assess-note mono">${esc(T("q.assessMeta", { cost: perLabel }))}</p>`}
     <div id="assess-out" hidden></div>
   </div>`;
 
@@ -1361,7 +1406,7 @@ export async function render(env, data, ctx) {
   const archSection = archived.length
     ? section({
         title: T("q.archived"),
-        sub: `${archived.length} · ${esc(T("q.archivedSub"))}`,
+        sub: `${archived.length}`,
         body: `<div class="q-arch">${table({
           cols: [
             { label: T("col.account") },

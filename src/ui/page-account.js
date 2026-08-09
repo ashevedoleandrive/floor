@@ -36,10 +36,14 @@ export const keys = {
   // identity line + inline editing
   "a.owner":        { en: "Owner", es: "Responsable" },
   "a.lastTouched":  { en: "Last touched", es: "Último contacto" },
-  "a.editHint": {
-    en: "Click a value to edit it. Region and last touched feed the score; the queue re-ranks on the next load.",
-    es: "Haz clic en un valor para editarlo. La región y el último contacto alimentan el puntaje; la cola se reordena en la próxima carga.",
+  /* the consequence, carried on the control it belongs to instead of a
+     standing paragraph under the identity line */
+  "a.editEffect": {
+    en: "Click to edit. Region and last touched feed the score, so the queue re-ranks.",
+    es: "Haz clic para editar. La región y el último contacto alimentan el puntaje, así que la cola se reordena.",
   },
+  "a.sec":     { en: "SEC EDGAR", es: "SEC EDGAR" },
+  "a.secNone": { en: "no filer found", es: "sin registro" },
 
   // page menu
   "a.reassess":    { en: "Re-assess", es: "Reanalizar" },
@@ -50,9 +54,9 @@ export const keys = {
   "a.history":     { en: "View prior runs", es: "Ver análisis anteriores" },
 
   // archive / touch / edit feedback
-  "a.archivedNote": {
-    en: "This account is archived. It stays out of the queue until it is restored.",
-    es: "Esta cuenta está archivada. Queda fuera de la cola hasta que se restaure.",
+  "a.archivedShort": {
+    en: "Out of the queue until it is restored.",
+    es: "Fuera de la cola hasta que se restaure.",
   },
   "a.archivedToast": { en: "Account archived", es: "Cuenta archivada" },
   "a.restoredToast": { en: "Account restored", es: "Cuenta restaurada" },
@@ -69,12 +73,24 @@ export const keys = {
     en: "abstained, nothing to grade",
     es: "se abstuvo, no hay nada que calificar",
   },
+  "a.rangeNote":  { en: "range {lo} to {hi}", es: "rango {lo} a {hi}" },
+  "a.noRunShort": { en: "Three stages, 2 to 4 minutes.", es: "Tres etapas, de 2 a 4 minutos." },
 
   // evidence
   "a.claims": { en: "{n} claims", es: "{n} afirmaciones" },
-  "a.readonlyClaims": {
-    en: "Claims are written by the pipeline and are read-only by design. Correcting one means re-running the assessment.",
-    es: "Las afirmaciones las escribe el sistema y son de solo lectura a propósito. Corregir una significa volver a correr el análisis.",
+  /* the trust argument as two counts, in place of the four sentences that
+     used to argue it above and below this table */
+  "a.evMix": {
+    en: "{sup} survived the critic · {prim} trace to a regulatory filing",
+    es: "{sup} sobrevivieron al crítico · {prim} se rastrean a una presentación regulatoria",
+  },
+  "a.evEmptyShort": {
+    en: "No claim survived the critic.",
+    es: "Ninguna afirmación sobrevivió al crítico.",
+  },
+  "a.sigNone": {
+    en: "No dated trigger on file.",
+    es: "Sin señal con fecha registrada.",
   },
   "a.evFilteredEmpty": {
     en: "No claims with this verdict.",
@@ -97,13 +113,13 @@ export const keys = {
   "a.cost":    { en: "Cost", es: "Costo" },
   "a.tokens":  { en: "Tokens", es: "Tokens" },
   "a.expand":  { en: "Details", es: "Detalles" },
+  "a.traceSub": {
+    en: "{cost} · {sec}s of model time · {n} calls",
+    es: "{cost} · {sec}s de tiempo de modelo · {n} llamadas",
+  },
 
   // run history
   "a.historyTitle": { en: "Run history", es: "Historial de análisis" },
-  "a.historySub": {
-    en: "every run kept, including removed ones; removing a run never destroys its trace",
-    es: "se conserva cada análisis, incluidos los eliminados; eliminar un análisis nunca destruye su traza",
-  },
   "a.historyEmpty":    { en: "No runs on record yet.", es: "Todavía no hay análisis registrados." },
   "a.historyLoadFail": { en: "Could not load the history.", es: "No se pudo cargar el historial." },
   "a.run":       { en: "Run", es: "Análisis" },
@@ -230,15 +246,25 @@ export async function render(env, data, ctx) {
   const archBanner = `<div id="a-arch" class="a-arch"${archived ? "" : " hidden"}>
     <div class="well well-held a-arch-in">
       ${mark("hatch", T("a.archive"), { tone: "held" })}
-      <span class="a-arch-t">${esc(T("a.archivedNote"))}</span>
+      <span class="a-arch-t">${esc(T("a.archivedShort"))}</span>
       ${btn(T("a.restore"), { kind: "text", action: "restore:account" })}
     </div>
   </div>`;
 
   const ident = (f, label, value, display, ghost) => `<span class="ie" data-f="${f}" data-v="${esc(value ?? "")}">
     <span class="ie-l t-label">${esc(label)}</span>
-    <button type="button" class="ie-v${ghost ? " none" : ""}${f === "region" ? " mono" : ""}" data-action="edit:${f}">${esc(display)}</button>
+    <button type="button" class="ie-v${ghost ? " none" : ""}${f === "region" ? " mono" : ""}" data-action="edit:${f}" title="${esc(T("a.editEffect"))}">${esc(display)}</button>
     <span class="ie-err" role="alert"></span>
+  </span>`;
+
+  /* Not editable, so not an `ident`: what EDGAR resolved this domain to,
+     or the plain words for a domain it could not resolve. */
+  const cik = account.sec_cik;
+  const secItem = `<span class="ie">
+    <span class="ie-l t-label">${esc(T("a.sec"))}</span>
+    ${cik
+      ? `<a class="a-sec mono" href="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&amp;CIK=${esc(cik)}&amp;type=10-K" target="_blank" rel="noopener">${esc(cik)} ↗</a>`
+      : `<span class="a-sec none">${esc(T("a.secNone"))}</span>`}
   </span>`;
 
   const menuItems = [
@@ -266,8 +292,8 @@ export async function render(env, data, ctx) {
         ${ident("region", T("dim.region"), account.region, account.region || T("acct.regionUnknown"), !account.region)}
         ${ident("owner", T("a.owner"), account.owner, account.owner || T("bl.unassigned"), !account.owner)}
         ${ident("last_touched_at", T("a.lastTouched"), account.last_touched_at, account.last_touched_at || T("cool.neverTouched"), !account.last_touched_at)}
+        ${secItem}
       </div>
-      <p class="a-hint">${esc(T("a.editHint"))}</p>
     </div>
     <div class="a-right">
       <div class="a-score">
@@ -300,7 +326,7 @@ export async function render(env, data, ctx) {
   if (!assessment) {
     reading = `<section class="reading">${well(`<div class="a-norun">
       ${mark("hollow", T("acct.noRun"), { tone: "mute" })}
-      <p class="t-body">${esc(T("acct.noRunBody"))}</p>
+      <p class="t-body">${esc(T("a.noRunShort"))}</p>
       ${btn(T("action.assess"), { kind: "primary", action: "acct:reassess" })}
     </div>`, { tone: "dashed" })}</section>`;
   } else if (assessment.abstained) {
@@ -361,18 +387,23 @@ export async function render(env, data, ctx) {
       {
         label: T("dim.fit"),
         value: scored.fit_score == null ? null : esc(Number(scored.fit_score).toFixed(2)),
-        note: scored.fit_score == null ? T("a.noFitNote") : T("dim.vsFloorLong", { floor: count(floor) }),
+        note: scored.fit_score == null ? T("a.noFitNote") : T("dim.vsFloor", { floor: count(floor) }),
       },
       {
         label: T("dim.timing"),
         value: esc(Number(scored.timing_score || 0).toFixed(2)),
-        note: nSig ? T("dim.signalsDecay", { n: nSig }) : T("dim.noDatedReason"),
+        note: nSig ? T("dim.signals", { n: nSig }) : T("dim.noDatedReason"),
       },
       { label: T("col.cooldown"), value: esc(coolWord), note: coolNote, mono: false },
       {
         label: T("dim.confidence"),
         value: esc(pct(assessment.confidence)),
-        note: T("dim.dampensLong"),
+        note: assessment.txn_mid == null
+          ? T("verdict.noEstimate")
+          : T("a.rangeNote", {
+              lo: count(assessment.txn_min ?? assessment.txn_mid),
+              hi: count(assessment.txn_max ?? assessment.txn_mid),
+            }),
       },
     ])}</div>`;
   }
@@ -413,23 +444,30 @@ export async function render(env, data, ctx) {
       </tbody>`;
     }).join("");
 
+    /* The two columns a first-time reader asks about carry their own
+       explanation on the header, one hover or focus away (§ the copy cut). */
     const evTable = evidence.length
       ? `<div class="tbl-wrap"><table class="tbl tbl-ruled ev-tbl">
           <thead><tr>
             <th>${esc(T("ev.field"))}</th><th>${esc(T("ev.value"))}</th><th>${esc(T("ev.method"))}</th>
-            <th>${esc(T("ev.sourceType"))}</th><th>${esc(T("ev.critic"))}</th><th>${esc(T("ev.source"))}</th>
+            <th title="${esc(T("ev.sourceTypeTip"))}">${esc(T("ev.sourceType"))}</th>
+            <th title="${esc(T("ev.criticTip"))}">${esc(T("ev.critic"))}</th>
+            <th>${esc(T("ev.source"))}</th>
           </tr></thead>
           ${bodies}
           <tbody class="ev-none" hidden><tr><td colspan="6"><div class="f-empty"><p>${esc(T("a.evFilteredEmpty"))}</p></div></td></tr></tbody>
         </table></div>`
-      : `<div class="f-empty"><p>${esc(T("ev.empty"))}</p></div>`;
+      : `<div class="f-empty"><p>${esc(T("a.evEmptyShort"))}</p></div>`;
+
+    const nPrimary = evidence.filter((e) => e.source_class?.tier === "primary_filing").length;
 
     evidenceSection = section({
       label: T("ev.title"),
       title: T("a.claims", { n: evidence.length }),
-      sub: T("ev.sub"),
-      body: `${evidence.length ? evTabs : ""}${evTable}
-        <p class="ev-foot">${esc(T("a.readonlyClaims"))}${lang === "es" ? ` ${esc(T("ev.langNote"))}` : ""}</p>`,
+      sub: evidence.length
+        ? esc(T("a.evMix", { sup: counts.supported, prim: nPrimary }))
+        : "",
+      body: `${evidence.length ? evTabs : ""}${evTable}`,
     });
   }
 
@@ -441,7 +479,7 @@ export async function render(env, data, ctx) {
         <p class="sig-d t-body">${esc(s.description)}</p>
         <span class="sig-meta mono">${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(host(s.url))} ↗</a> · ` : ""}${esc(T("acct.weight"))} ${esc(Number(s.weight ?? 0).toFixed(2))}</span>
       </li>`).join("")}</ul>`
-    : `<div class="f-empty"><p>${esc(T("sig.none"))}</p></div>`;
+    : `<div class="f-empty"><p>${esc(T("a.sigNone"))}</p></div>`;
 
   const signalsSection = section({ title: T("sig.title"), body: sigBody });
 
@@ -493,7 +531,7 @@ export async function render(env, data, ctx) {
 
     traceSection = section({
       title: T("trace.title"),
-      sub: esc(T("trace.sub", {
+      sub: esc(T("a.traceSub", {
         cost: money(assessment.cost_usd, 4),
         sec: Math.round(totalMs / 1000),
         n: traces.length,
@@ -511,18 +549,13 @@ export async function render(env, data, ctx) {
         rows,
         size: "dense",
         empty: esc(T("common.empty")),
-      }, T)}</div>
-      <p class="trc-foot">${esc(T("trace.foot"))}</p>`,
+      }, T)}</div>`,
     });
   }
 
-  /* ------------------------ run history -------------------------- */
-
-  const historySection = section({
-    title: T("a.historyTitle"),
-    sub: esc(T("a.historySub")),
-    body: `<div id="hist">${btn(T("a.history"), { kind: "quiet", action: "acct:history" })}</div>`,
-  });
+  /* Run history has no resting chrome. It is reached from the trace
+     header and the page menu, and renders its own heading when loaded. */
+  const historySection = `<div id="hist" class="a-hist"></div>`;
 
   /* ------------------------------ page --------------------------- */
 
@@ -591,7 +624,11 @@ export function css() {
 .p-account .ie-in.t-title { height: 36px; font: 650 18px/1.2 var(--sans); }
 .p-account .ie-err { color: var(--bad); font-size: 12px; line-height: 1.5; max-width: 36ch; }
 .p-account .ie-err:empty { display: none; }
-.p-account .a-hint { margin-top: 12px; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
+.p-account .a-sec { font-size: 13px; align-self: flex-start; padding-bottom: 1px; }
+.p-account .a-sec.none { color: var(--ink-4); font-family: var(--mono); }
+.p-account .a-hist:empty { display: none; }
+.p-account .a-hist { margin-top: 48px; }
+.p-account .a-hist-h { padding-bottom: 8px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
 .p-account .a-right { display: flex; align-items: flex-start; gap: 12px; flex: none; padding-top: 4px; }
 .p-account .a-score { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
 .p-account .a-score-l { color: var(--ink-3); }
@@ -633,7 +670,6 @@ export function css() {
 .p-account .ev-c { white-space: nowrap; }
 .p-account .ev-s { white-space: nowrap; }
 .p-account .ev-i:hover td { background: color-mix(in srgb, var(--ink-1) 3%, transparent); }
-.p-account .ev-foot { margin-top: 16px; font-size: 12px; line-height: 1.5; color: var(--ink-3); max-width: 88ch; }
 .p-account .sigs { list-style: none; padding: 0; display: flex; flex-direction: column; }
 .p-account .sig { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .p-account .sig-h { color: var(--ink-3); display: block; }
@@ -651,7 +687,6 @@ export function css() {
 .p-account .trc-g { display: flex; gap: 32px; flex-wrap: wrap; margin: 12px 0 0; }
 .p-account .trc-g dt { font: 600 11px/1.3 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
 .p-account .trc-g dd { margin: 4px 0 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
-.p-account .trc-foot { margin-top: 16px; font-size: 12px; line-height: 1.5; color: var(--ink-3); max-width: 88ch; }
 .p-account .hist-err { color: var(--bad); font-size: 13px; }
 .p-account .a-nf { margin-top: 32px; }
 .p-account .a-nf .f-empty { padding: 48px 24px; }
@@ -860,13 +895,14 @@ export function script() {
   function renderHistory(rows) {
     var hostEl = histHost();
     if (!hostEl) return;
+    var head = '<h2 class="t-section a-hist-h">' + esc(t("a.historyTitle")) + "</h2>";
     if (!rows.length) {
-      hostEl.innerHTML = '<div class="f-empty"><p>' + esc(t("a.historyEmpty")) + "</p></div>";
+      hostEl.innerHTML = head + '<div class="f-empty"><p>' + esc(t("a.historyEmpty")) + "</p></div>";
       return;
     }
     var currentId = null;
     for (var i = 0; i < rows.length; i++) { if (!rows[i].deleted_at) { currentId = rows[i].id; break; } }
-    var out = '<div class="tbl-wrap"><table class="tbl tbl-dense"><thead><tr>' +
+    var out = head + '<div class="tbl-wrap"><table class="tbl tbl-dense"><thead><tr>' +
       "<th>" + esc(t("a.run")) + "</th><th>" + esc(t("a.result")) + "</th>" +
       '<th class="num">' + esc(t("col.conf")) + '</th><th class="num">' + esc(t("a.cost")) + "</th>" +
       "<th></th><th class=\\"col-menu\\"></th></tr></thead><tbody>";

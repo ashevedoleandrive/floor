@@ -106,6 +106,8 @@ function fmtValue(key, v) {
 
 export const keys = {
   "set.resetDefault": { en: "↺ default", es: "↺ por defecto" },
+  "set.searchSuffix": { en: "USD / search", es: "USD / búsqueda" },
+  "set.acvPh":        { en: "type it, this tool will not guess", es: "escríbelo, esta herramienta no adivina" },
   "set.changedOn":    { en: "Changed {date}", es: "Cambiado el {date}" },
   "set.discard":      { en: "Discard", es: "Descartar" },
   "set.saveException": {
@@ -113,10 +115,7 @@ export const keys = {
     es: "Todo lo demas en Floor guarda de inmediato. Esta pagina agrupa los cambios y los aplica juntos, porque un umbral equivocado o un enfriamiento mal puesto debe ser un acto deliberado, no una tecla.",
   },
   "set.historyTitle": { en: "Change history", es: "Historial de cambios" },
-  "set.historySub": {
-    en: "What changed here, and when. This tool has no login, so no operator identity is recorded, only the values.",
-    es: "Que cambio aqui, y cuando. Esta herramienta no tiene inicio de sesion, asi que no se registra la identidad de quien cambia, solo los valores.",
-  },
+  "set.impactSubCase": { en: "Used only on the Case page.", es: "Se usa solo en la pagina de Caso." },
   "set.historyEmpty": {
     en: "No changes recorded yet. Every save from here on is logged with its previous value.",
     es: "Todavia no hay cambios registrados. Cada guardado a partir de ahora queda registrado con su valor anterior.",
@@ -140,10 +139,6 @@ export const keys = {
 export function css() {
   return `
 .p-settings .whead { padding-top: 32px; }
-.p-settings .save-note {
-  margin-top: 12px; max-width: 64ch;
-  font-size: 13px; line-height: 1.55; color: var(--ink-3);
-}
 
 .p-settings .fld-row {
   max-width: 640px;
@@ -160,31 +155,21 @@ export function css() {
 .p-settings .fld-tools .btn { padding-left: 0; padding-right: 0; }
 .p-settings .fld-changed { font-size: 12px; color: var(--ink-3); }
 
-.p-settings .model-legend {
-  display: flex; flex-wrap: wrap; gap: 24px; max-width: 640px;
-  margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--line);
-}
-.p-settings .model-legend-item { flex: 1 1 200px; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
-.p-settings .model-legend-item b { color: var(--ink-1); font-weight: 600; }
 
 .p-settings .rules-link { margin-top: 24px; font-size: 13px; line-height: 1.55; }
 .p-settings .rules-link .ink-3 { margin-left: 6px; }
 
-.p-settings .save-bar {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-  z-index: 85; display: flex; align-items: center; gap: 12px;
-  background: var(--white); border-radius: 10px; box-shadow: var(--shadow);
-  padding: 8px 8px 8px 16px; white-space: nowrap;
-  transition: opacity .18s var(--ease), transform .18s var(--ease);
-}
-.p-settings .save-bar.enter { opacity: 0; transform: translate(-50%, 8px); }
-.p-settings .save-bar-n { font-size: 13px; color: var(--ink-1); }
+/* Visible at rest in the working header: Save is the page's one control
+   and it may not appear only after the operator has already typed. */
+.p-settings .save-bar { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.p-settings .save-bar-n { font-size: 13px; color: var(--ink-3); transition: color .18s var(--ease); }
+.p-settings .save-bar.dirty .save-bar-n { color: var(--ink-1); }
 .p-settings .save-bar-n.err { color: var(--bad); }
 .p-settings .save-bar-sep { width: 1px; height: 16px; background: var(--line); flex: none; }
 
 @media (max-width: 720px) {
-  .p-settings .fld-row, .p-settings .model-legend { max-width: none; }
-  .p-settings .save-bar { max-width: calc(100vw - 32px); overflow-x: auto; }
+  .p-settings .fld-row { max-width: none; }
+  .p-settings .save-bar { flex-wrap: wrap; white-space: normal; }
 }
 `;
 }
@@ -236,83 +221,88 @@ export async function render(env, data, ctx) {
   if (costPerAccount != null) {
     metaParts.push(esc(T("set.headerCost", { cost: money(costPerAccount, 4) })));
   }
+  const saveCluster = `<div class="save-bar" id="set-bar" role="status" aria-live="polite">
+    <span class="save-bar-n" id="set-status">${esc(T("set.noUnsaved"))}</span>
+    <span class="save-bar-sep" aria-hidden="true"></span>
+    <button type="button" class="btn btn-text btn-sm" id="set-discard" hidden>${esc(T("set.discard"))}</button>
+    <button type="button" class="btn btn-primary btn-sm" id="set-save" disabled title="${esc(plain(T("set.saveException")))}">${esc(T("set.save"))}</button>
+  </div>`;
+
   const header = `<div class="whead">
     <div class="whead-t">
       <h1 class="t-title">${esc(T("nav.settings"))}</h1>
       ${metaParts.length ? `<span class="whead-meta">${metaParts.join(" · ")}</span>` : ""}
     </div>
-  </div>
-  <p class="save-note">${esc(plain(T("set.saveException")))}</p>`;
+    <div class="whead-a">${saveCluster}</div>
+  </div>`;
 
   /* ---- qualification: the two numbers the whole queue turns on. */
   const qual = section({
-    title: T("set.qualTitle"), sub: esc(T("set.qualSub")),
+    title: T("set.qualTitle"),
     body: `
       ${row("floor_txn", {
         label: T("set.floorLabel"), value: settings.floor_txn, type: "number", min: 1000,
-        suffix: T("set.floorSuffix"), hint: T("set.floorHint"), effect: plain(T("set.floorEffect")),
+        suffix: T("set.floorSuffix"), effect: plain(T("set.floorEffect")),
       })}
       ${row("cooldown_days", {
         label: T("set.cdLabel"), value: settings.cooldown_days, type: "number", min: 0, step: 1,
-        suffix: T("field.days"), hint: T("set.cdHint"), effect: T("set.cdEffect"),
+        suffix: T("field.days"), effect: T("set.cdEffect"),
       })}`,
   });
 
   /* ---- model routing: which model runs which stage. */
   const modelOpts = MODELS.map(([v, l]) => ({ value: v, label: l }));
-  const modelLegend = `<div class="model-legend">${MODELS.map(([, label, whyKey]) =>
-    `<div class="model-legend-item"><b>${esc(label)}</b> ${esc(T(whyKey))}</div>`).join("")}</div>`;
   const routing = section({
-    title: T("set.routeTitle"), sub: esc(T("set.routeSub")),
+    title: T("set.routeTitle"),
     body: `
       ${row("model_research", {
         label: T("stage.research"), value: settings.model_research, options: modelOpts,
-        hint: T("set.researchHint"), effect: T("set.futureOnlyEvidence"),
+        effect: T("set.futureOnlyEvidence"),
       })}
       ${row("model_extract", {
         label: T("stage.extract"), value: settings.model_extract, options: modelOpts,
-        hint: T("set.extractHint"), effect: T("set.futureOnly"),
+        effect: T("set.futureOnly"),
       })}
       ${row("model_critic", {
         label: T("stage.critic"), value: settings.model_critic, options: modelOpts,
-        hint: T("set.criticHint"), effect: T("set.criticEffect"),
+        effect: T("set.criticEffect"),
       })}
-      ${modelLegend}`,
+      `,
   });
 
   /* ---- cost controls: this runs behind a public URL. */
   const cost = section({
-    title: T("set.costTitle"), sub: esc(T("set.costSub")),
+    title: T("set.costTitle"),
     body: `
       ${row("daily_cap_usd", {
         label: T("set.capLabel"), value: settings.daily_cap_usd ?? budget.cap, type: "number", min: 0, step: 0.01,
-        suffix: T("set.capSuffix"), hint: T("set.capHint"), effect: plain(T("set.capEffect")),
+        suffix: T("set.capSuffix"), effect: plain(T("set.capEffect")),
       })}
       ${row("search_usd", {
         label: T("set.searchLabel"), value: settings.search_usd, type: "number", min: 0, step: 0.0001,
-        hint: T("set.searchHint"), effect: T("set.searchEffect"),
+        suffix: T("set.searchSuffix"), effect: T("set.searchEffect"),
       })}`,
   });
 
   /* ---- evidence classification: how a source gets rated. */
-  const rulesLink = `<p class="rules-link"><a href="/sources#rules-panel">${esc(T("set.rulesLink"))}</a> <span class="ink-3">${esc(T("set.rulesLinkNote"))}</span></p>`;
+  const rulesLink = `<p class="rules-link"><a href="/coverage#registry">${esc(T("set.rulesLink"))}</a></p>`;
   const evidence = section({
-    title: T("set.evTitle"), sub: esc(T("set.evSub")),
+    title: T("set.evTitle"),
     body: `
       ${row("tier_unclassified_weight", {
         label: T("set.uwLabel"), value: settings.tier_unclassified_weight ?? "0.35", type: "number", min: 0, max: 1, step: 0.05,
-        hint: T("set.uwHint"), effect: T("set.uwEffect"),
+        effect: T("set.uwEffect"),
       })}
       ${rulesLink}`,
   });
 
   /* ---- impact model: theirs to type, never invented. */
   const impact = section({
-    title: T("set.impactTitle"), sub: esc(T("set.impactSub")),
+    title: T("set.impactTitle"), sub: esc(T("set.impactSubCase")),
     body: `
       ${row("acv_usd", {
         label: T("set.acvLabel"), value: settings.acv_usd || "", type: "number", min: 0, suffix: "USD",
-        hint: T("set.acvHint"), effect: T("set.acvEffect"),
+        placeholder: T("set.acvPh"), effect: T("set.acvEffect"),
       })}`,
   });
 
@@ -344,18 +334,11 @@ export async function render(env, data, ctx) {
   // history-table query, not a reusable style, so it owes no CSS rule and
   // cannot trip the "class emitted with no stylesheet entry" gate.
   const historySection = `<div id="hist-sec">${section({
-    title: T("set.historyTitle"), sub: esc(T("set.historySub")),
+    title: T("set.historyTitle"),
     body: table({ cols: histCols, rows: histRows, size: "dense", empty: esc(T("set.historyEmpty")) }, T),
   })}</div>`;
 
-  const saveBar = `<div class="save-bar" id="set-bar" role="status" aria-live="polite" hidden>
-    <span class="save-bar-n" id="set-status"></span>
-    <span class="save-bar-sep"></span>
-    <button type="button" class="btn btn-text btn-sm" id="set-discard">${esc(T("set.discard"))}</button>
-    <button type="button" class="btn btn-primary btn-sm" id="set-save" disabled>${esc(T("set.save"))}</button>
-  </div>`;
-
-  return `${header}${qual}${routing}${cost}${evidence}${impact}${historySection}${saveBar}`;
+  return `${header}${qual}${routing}${cost}${evidence}${impact}${historySection}`;
 }
 
 export function script() {
@@ -403,13 +386,8 @@ export function script() {
   function setBarVisible(show){
     if (show === barShown) return;
     barShown = show;
-    if (show) {
-      bar.hidden = false;
-      bar.classList.add('enter');
-      requestAnimationFrame(function(){ requestAnimationFrame(function(){ bar.classList.remove('enter'); }); });
-    } else {
-      bar.hidden = true;
-    }
+    bar.classList.toggle('dirty', show);
+    discardBtn.hidden = !show;
   }
 
   function refreshBar(){

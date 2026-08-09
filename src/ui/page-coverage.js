@@ -29,7 +29,7 @@
      selection, both state changes. Reduced motion collapses them.
    --------------------------------------------------------------------- */
 
-import { esc, mark, level, statRow, section, table, btn } from "./kit.js";
+import { esc, mark, level, statRow, section, table, btn, field, dialog } from "./kit.js";
 import { coverageByRegion, RAW_SOURCES } from "../lib/sources.js";
 
 export const meta = {
@@ -42,14 +42,10 @@ export const meta = {
 
 export const keys = {
   "cvg.metaLine": {
-    en: "{assessed} of {total} accounts assessed · {estimated} produced an estimate · {abstained} abstained",
-    es: "{assessed} de {total} cuentas analizadas · {estimated} con estimación · {abstained} abstenciones",
+    en: "{assessed} of {total} accounts assessed · {estimated} estimates · {abstained} abstained · {conn} of {srcTotal} sources connected",
+    es: "{assessed} de {total} cuentas analizadas · {estimated} estimaciones · {abstained} abstenciones · {conn} de {srcTotal} fuentes conectadas",
   },
-  "cvg.sourcesBtn": { en: "Source registry", es: "Registro de fuentes" },
-  "cvg.claim": {
-    en: "Lit means Floor can qualify merchants in that region. Dark means it is blind. The map answers a second question at the same time, because ground truth is read out of the same filings the estimate is built from: where Floor can check whether it is right. One source wired in a region moves both.",
-    es: "Iluminado significa que Floor puede calificar comercios en esa región. Oscuro significa que está ciego. El mapa responde una segunda pregunta al mismo tiempo, porque la verdad de referencia sale de los mismos informes con los que se arma la estimación: dónde Floor puede comprobar si acierta. Conectar una fuente en una región mueve las dos cosas.",
-  },
+  "cvg.sourcesBtn": { en: "Registry", es: "Registro" },
 
   // region names (the API label is English only)
   "cvg.r.NORTHAMERICA": { en: "North America", es: "Norteamérica" },
@@ -62,14 +58,6 @@ export const keys = {
   "cvg.mapAria": {
     en: "World map of qualification coverage by region. Five regions; press Tab to move between them and Enter to inspect one.",
     es: "Mapa mundial de cobertura de calificación por región. Cinco regiones; usa Tab para moverte entre ellas y Enter para inspeccionar una.",
-  },
-  "cvg.modeCaption": {
-    en: "Today is measured from stored assessments. Wired is a projection from the source registry, not a measurement.",
-    es: "Hoy se mide desde los análisis almacenados. Conectado es una proyección del registro de fuentes, no una medición.",
-  },
-  "cvg.modeCaptionEmpty": {
-    en: "Nothing is lit yet: lighting is earned by assessments. The projection still works because the registry is editorial.",
-    es: "Nada está iluminado aún: la luz se gana con análisis. La proyección funciona igual porque el registro es editorial.",
   },
   "cvg.territories": { en: "Territories", es: "Territorios" },
   "cvg.accts": { en: "accts", es: "ctas" },
@@ -98,36 +86,24 @@ export const keys = {
 
   // legend (color is never the only carrier)
   "cvg.legendFill": {
-    en: "Fill brightness: measured ability to qualify accounts",
-    es: "Brillo del relleno: capacidad medida de calificar cuentas",
+    en: "Brighter fill: higher estimate rate",
+    es: "Relleno más claro: mayor tasa de estimación",
   },
   "cvg.legendHatch": {
-    en: "Hatched: under {min} assessed, no claim made",
-    es: "Rayado: menos de {min} analizadas, sin afirmación",
+    en: "Hatched: under {min} assessed",
+    es: "Rayado: menos de {min} analizadas",
   },
   "cvg.legendDash": {
-    en: "Dashed: projected from the registry, not measured",
-    es: "Discontinuo: proyección del registro, no medido",
+    en: "Dashed: projected, not measured",
+    es: "Discontinuo: proyectado, no medido",
   },
 
   // rail
   "cvg.railAll": { en: "All regions", es: "Todas las regiones" },
   "cvg.railRegion": { en: "Region", es: "Región" },
-  "cvg.railHint": {
-    en: "Select a region on the map to see what is measured, what is missing, and what would close the gap.",
-    es: "Selecciona una región del mapa para ver qué está medido, qué falta y qué cerraría la brecha.",
-  },
-  "cvg.overallSentence": {
-    en: "{estimated} of {assessed} assessed accounts produced an estimate. {abstained} abstained, out loud, rather than guess.",
-    es: "{estimated} de {assessed} cuentas analizadas produjeron una estimación. {abstained} se abstuvieron, en voz alta, en lugar de adivinar.",
-  },
   "cvg.latamLine": {
     en: "LATAM is Yuno's home market and Floor is blind there: {a} of {t} accounts assessed, and with every source in the registry wired the region still only reaches {level}.",
     es: "LATAM es el mercado principal de Yuno y Floor está ciego allí: {a} de {t} cuentas analizadas, y aun con todo el registro conectado la región solo llega a {level}.",
-  },
-  "cvg.argument": {
-    en: "A measured gap is an argument for investment. An unmeasured one is only a weakness. Wiring sources turns the assumption into a measurement.",
-    es: "Una brecha medida es un argumento para invertir. Una sin medir es solo una debilidad. Conectar fuentes convierte la suposición en medición.",
   },
   "cvg.unassignedRegion": {
     en: "{n} account(s) have no region and appear nowhere on this map.",
@@ -148,37 +124,16 @@ export const keys = {
 
   /* what is connected in this region, which is the half of the story the
      page could not tell while only one source existed */
-  "cvg.connTitle": { en: "What is connected here", es: "Qué está conectado aquí" },
-  "cvg.connFiling": {
-    en: "A regulator's own filing store is connected here, so a merchant's evidence starts from a primary document rather than from a search for commentary about one.",
-    es: "Aquí está conectado el archivo de informes del propio regulador, así que la evidencia de un comercio empieza en un documento primario y no en una búsqueda de comentarios sobre él.",
-  },
-  "cvg.connGeneral": {
-    en: "Only the general web search is connected here. Nothing in this region reads a filed document, which is the whole reason the region looks the way it does.",
-    es: "Aquí solo está conectada la búsqueda web general. Nada en esta región lee un documento presentado, y esa es toda la razón por la que la región se ve así.",
-  },
-  "cvg.gradeLine": {
-    en: "{a} of {b} surviving claims here come from a regulator filing, which is what an accuracy score can be graded against.",
-    es: "{a} de {b} afirmaciones vigentes aquí vienen de un informe regulatorio, que es contra lo que se puede calificar la precisión.",
-  },
-  "cvg.gradeLineNone": {
-    en: "No surviving claim here comes from a regulator filing, so there is nothing to grade an accuracy score against.",
-    es: "Ninguna afirmación vigente aquí viene de un informe regulatorio, así que no hay nada contra qué calificar la precisión.",
-  },
-  "cvg.gradeLineEmpty": {
-    en: "Nothing has been assessed here, so there are no claims and nothing to grade.",
-    es: "Aquí no se ha analizado nada, así que no hay afirmaciones ni nada que calificar.",
-  },
+  "cvg.connTitle": { en: "Connected here", es: "Conectado aquí" },
+  "cvg.stFiling": { en: "Claims from a filing", es: "Afirmaciones de un informe" },
+  "cvg.noneToGrade": { en: "nothing to grade against", es: "nada contra qué calificar" },
+  "cvg.noClaims": { en: "no claims yet", es: "aún sin afirmaciones" },
 
   /* the constraint table */
   "cvg.oneLabel": { en: "One constraint", es: "Una sola restricción" },
   "cvg.oneTitle": {
     en: "Where Floor can qualify, and where it can grade itself",
     es: "Dónde Floor puede calificar y dónde puede calificarse a sí mismo",
-  },
-  "cvg.oneSub": {
-    en: "the same regions fail in both columns, and they fail for the same reason: nothing there reads a filed document. Where too few are assessed to support a rate, the region says how many more it needs",
-    es: "las mismas regiones fallan en ambas columnas, y fallan por la misma razón: allí nada lee un documento presentado. Una tasa bajo el piso muestral se retiene en lugar de imprimirse pequeña",
   },
   "cvg.colAccounts": { en: "Accounts", es: "Cuentas" },
   "cvg.colFiling": { en: "Claims from a filing", es: "Afirmaciones de un informe" },
@@ -187,9 +142,10 @@ export const keys = {
   "cvg.withheldOne": { en: "1 more to rate", es: "falta 1 para calificar" },
   "cvg.gradeYes": { en: "truth is checkable", es: "la verdad es comprobable" },
   "cvg.gradeNo": { en: "nothing to grade against", es: "nada contra qué calificar" },
+  /* the one authored argument on this page, under the table that proves it */
   "cvg.oneFoot": {
-    en: "Coverage and measurability are not two weaknesses. They are one. The filings that let Floor size a merchant are the filings an accuracy score is graded against, so a source wired in a dark region lights it and makes it checkable in the same move.",
-    es: "Cobertura y medición no son dos debilidades. Son una sola. Los informes que permiten dimensionar un comercio son los mismos contra los que se califica la precisión, así que una fuente conectada en una región oscura la ilumina y la vuelve comprobable en el mismo movimiento.",
+    en: "The filings that let Floor size a merchant are the filings its accuracy is graded against, so one source wired in a dark region lights it and makes it checkable in the same move.",
+    es: "Los informes que permiten dimensionar un comercio son los mismos contra los que se califica la precisión, así que una fuente conectada en una región oscura la ilumina y la vuelve comprobable en el mismo movimiento.",
   },
   "cvg.seeAccuracy": { en: "How the grading works", es: "Cómo funciona la calificación" },
 
@@ -256,6 +212,109 @@ export const keys = {
     es: "Los datos de cobertura no cargaron. El mapa de abajo muestra solo geografía y no afirma cobertura.",
   },
   "cvg.retry": { en: "Retry", es: "Reintentar" },
+
+  /* ---------- the registry, absorbed from the Sources page ----------
+     Sources is the inventory, Coverage is the consequence, and the page
+     already argued they are one constraint. Copy is short here because
+     the row expansion carries the detail one interaction away. */
+  "cvg.regSub":   { en: "{connected} of {total} connected", es: "{connected} de {total} conectadas" },
+  "cvg.colSource":   { en: "Source", es: "Fuente" },
+  "cvg.colKind":     { en: "Kind", es: "Tipo" },
+  "cvg.colCost":     { en: "Cost", es: "Costo" },
+  "cvg.colCoverage": { en: "By region", es: "Por región" },
+  "cvg.rowDetailsAria": { en: "Source details", es: "Detalles de la fuente" },
+  "cvg.nextUp": { en: "next up", es: "lo siguiente" },
+  "cvg.st.key_held": { en: "Key held", es: "Clave lista" },
+  "cvg.st.available": { en: "Available", es: "Disponible" },
+  "cvg.st.keyHeldWhat": {
+    en: "Credential is in place. No reader is built for it yet.",
+    es: "La credencial está lista. Todavía no hay lector construido.",
+  },
+  "cvg.kind.evidence":  { en: "Evidence", es: "Evidencia" },
+  "cvg.kind.volume":    { en: "Volume", es: "Volumen" },
+  "cvg.kind.footprint": { en: "Footprint", es: "Huella" },
+  "cvg.kind.truth":     { en: "Truth", es: "Verdad" },
+
+  /* the two jobs a connected source does, one line each, in the row's
+     own expansion rather than in a section that argued them in prose */
+  "cvg.inAssess":   { en: "In an assessment", es: "En un análisis" },
+  "cvg.inAccuracy": { en: "In the accuracy score", es: "En la calificación" },
+  "cvg.gradesTool":  { en: "grades the tool", es: "califica la herramienta" },
+  "cvg.cannotGrade": { en: "cannot grade itself", es: "no puede calificarse" },
+  "cvg.role.web_search.assess": {
+    en: "Finds dated events and figures wherever they were published, and returns the URL it read.",
+    es: "Encuentra hechos fechados y cifras donde se hayan publicado, y devuelve la URL que leyó.",
+  },
+  "cvg.role.web_search.accuracy": {
+    en: "Nothing. A search engine cannot be its own answer key.",
+    es: "Nada. Un buscador no puede ser su propia clave de respuestas.",
+  },
+  "cvg.role.sec_edgar.assess": {
+    en: "Runs before any search. The filing is reduced in code and handed to research as primary evidence.",
+    es: "Corre antes de cualquier búsqueda. El informe se reduce en código y se entrega a la investigación como evidencia primaria.",
+  },
+  "cvg.role.sec_edgar.accuracy": {
+    en: "Truth is quoted verbatim from the filing and converted to a monthly rate in code.",
+    es: "La verdad se cita textual del informe y se convierte a tasa mensual en código.",
+  },
+  "cvg.roleNone": {
+    en: "No role written yet.",
+    es: "Todavía sin rol escrito.",
+  },
+
+  /* ---------- classification rules ---------- */
+  "cvg.rulesSub": {
+    en: "Matched against the source URL in order, first match wins, no model involved. Editing a rule re-grades every stored claim.",
+    es: "Se comparan contra la URL en orden, gana la primera coincidencia, sin ningún modelo. Editar una regla recalifica cada afirmación guardada.",
+  },
+  "rules.testLabel": { en: "Test a URL", es: "Probar una URL" },
+  "rules.testPh": {
+    en: "Paste a source URL to see which rule matches",
+    es: "Pega una URL de fuente para ver qué regla coincide",
+  },
+  "rules.testEmpty": {
+    en: "Type a URL to see which rule would match.",
+    es: "Escribe una URL para ver qué regla coincidiría.",
+  },
+  "rules.testMatch": {
+    en: "Matches the rule at order {order}: {tier}, weight {w}.",
+    es: "Coincide con la regla de orden {order}: {tier}, peso {w}.",
+  },
+  "rules.testNoMatch": {
+    en: "No rule matches. Falls through to {tier} at weight {w}.",
+    es: "Ninguna regla coincide. Cae en {tier} con peso {w}.",
+  },
+  "rules.patternHint": {
+    en: "Matched as a case-insensitive substring of the source URL.",
+    es: "Se compara como un fragmento de la URL, sin distinguir mayúsculas.",
+  },
+  "rules.weightHint": {
+    en: "0 to 1. What this source is worth when a claim is scored.",
+    es: "De 0 a 1. Cuánto vale esta fuente cuando se califica una afirmación.",
+  },
+  "rules.weightRange":    { en: "Weight must be between 0 and 1.", es: "El peso debe estar entre 0 y 1." },
+  "rules.positionRange":  { en: "Order must be a positive number.", es: "El orden debe ser un número positivo." },
+  "rules.patternRequired": {
+    en: "Enter a URL fragment to match.",
+    es: "Escribe un fragmento de URL para buscar coincidencias.",
+  },
+  "rules.dupBlock": {
+    en: "A rule for this pattern already exists at order {order} ({label}). Edit that one instead, or it would never match.",
+    es: "Ya existe una regla para este patrón en el orden {order} ({label}). Edita esa en su lugar, o esta nunca coincidiría.",
+  },
+  "rules.unknownTier": { en: "Choose a classification tier.", es: "Elige un nivel de clasificación." },
+  "rules.edit":     { en: "Edit", es: "Editar" },
+  "rules.fldLabel": { en: "Label shown on screen", es: "Etiqueta que se muestra" },
+  "rules.fldNote":  { en: "Why this rule exists", es: "Por qué existe esta regla" },
+  "rules.editTitle": { en: "Edit a classification rule", es: "Editar una regla de clasificación" },
+  "rules.moveUp":   { en: "Move up", es: "Subir" },
+  "rules.moveDown": { en: "Move down", es: "Bajar" },
+  "rules.savedToast":     { en: "Rule saved.", es: "Regla guardada." },
+  "rules.addedToast":     { en: "Rule added.", es: "Regla agregada." },
+  "rules.deletedToast":   { en: "Rule deleted.", es: "Regla eliminada." },
+  "rules.enabledToast":   { en: "Rule enabled.", es: "Regla activada." },
+  "rules.disabledToast":  { en: "Rule disabled.", es: "Regla desactivada." },
+  "action.retry": { en: "Retry", es: "Reintentar" },
 };
 
 /* ======================= geometry (inline SVG) ====================== */
@@ -357,15 +416,6 @@ const LEVEL_N = { strong: 3, partial: 2, weak: 1, none: 0 };
 /* The two connected sources, read from the registry rather than named in
    copy, so this page cannot go stale the way its predecessor did when
    EDGAR was wired and every sentence still said "one source". */
-// Status is derived per request now, so this page reads it from the payload the
-// router passes rather than from the registry's declared constant. Falls back to
-// the raw list only so a stale caller cannot blank the section.
-const connectedFrom = (data) =>
-  (data?.sources || RAW_SOURCES).filter((s) => s.status === "connected");
-/* A source that reads filed documents rather than searching for
-   commentary about them. Kind is the registry's own word for it. */
-const READS_FILINGS = (s) => s.kind === "volume" || s.kind === "truth";
-
 const GHOST = `<span class="ink-4">&ndash;</span>`;
 
 /* ============================= helpers ============================= */
@@ -547,6 +597,9 @@ function fieldSvg(data, T, wired, ownersMap, outlineOnly) {
  *  is the registry's own coverage rating per source, so a connected
  *  source that reaches nothing here says "none" out loud rather than
  *  being quietly dropped. */
+/** The list is the whole statement: which sources reach this region and
+ *  how far. A source that reaches nothing says "none" out loud, which is
+ *  more legible than a sentence explaining that it reaches nothing. */
 function connectedBlock(T, region, connected) {
   const items = connected.map((s) => {
     const lvl = s.coverage?.[region] || "none";
@@ -556,24 +609,10 @@ function connectedBlock(T, region, connected) {
     </li>`;
   }).join("");
 
-  const filingHere = connected.some((s) => READS_FILINGS(s) && (LEVEL_N[s.coverage?.[region]] ?? 0) >= 2);
-  const note = filingHere ? T("cvg.connFiling") : T("cvg.connGeneral");
-
   return `<div class="cv-block">
     <span class="t-label cv-block-l">${esc(T("cvg.connTitle"))}</span>
     <ul class="cv-conns">${items}</ul>
-    <p class="cv-note">${esc(note)}</p>
   </div>`;
-}
-
-/** The measurability half, stated per region in the same block that
- *  states coverage, because they are the same fact seen twice. */
-function gradeLine(T, m) {
-  const claims = totalClaims(m), filing = filingClaims(m);
-  const text = !claims ? T("cvg.gradeLineEmpty")
-    : filing ? T("cvg.gradeLine", { a: filing, b: claims })
-      : T("cvg.gradeLineNone");
-  return `<p class="cv-grade">${esc(text)}</p>`;
 }
 
 function causesList(T, measured) {
@@ -602,9 +641,6 @@ function liftList(T, r) {
       ((LEVEL_N[b.coverage_level] ?? 0) - (LEVEL_N[a.coverage_level] ?? 0)));
 
   const m = r.measured;
-  const intro = m.sample_too_small && sources.length
-    ? `<p class="cv-note">${esc(T("cvg.liftFirst"))}</p>` : "";
-
   const items = sources.length ? sources.map((s) => {
     const lvl = level(LEVEL_N[s.coverage_level] ?? 0, 3, T(`cov.${s.coverage_level}`), { tone: "mute" });
     const move = !m.sample_too_small && s.addressable_count > 0
@@ -623,7 +659,7 @@ function liftList(T, r) {
 
   return `<div class="cv-block">
     <span class="t-label cv-block-l">${esc(T("cvg.liftTitle"))}</span>
-    ${intro}${body}
+    ${body}
   </div>`;
 }
 
@@ -651,6 +687,17 @@ function regionPanel(T, r, minSample, connected) {
         ? (m.assessed === 0 ? T("cvg.noteNoRuns") : T("cvg.noteSmallConf"))
         : undefined,
     },
+    /* the measurability half as a figure, where a sentence used to argue
+       it: how much of this region's surviving evidence is gradeable */
+    {
+      label: T("cvg.stFiling"),
+      value: totalClaims(m)
+        ? `${filingClaims(m)}<span class="u"> / ${totalClaims(m)}</span>`
+        : null,
+      note: !totalClaims(m) ? T("cvg.noClaims")
+        : !filingClaims(m) ? T("cvg.noneToGrade")
+        : undefined,
+    },
   ]);
 
   return `<section class="cov-panel" data-panel="${esc(r.region)}" hidden>
@@ -664,7 +711,6 @@ function regionPanel(T, r, minSample, connected) {
     <div class="cv-mark">${stateMark}</div>
     ${stats}
     ${connectedBlock(T, r.region, connected)}
-    ${gradeLine(T, m)}
     ${causesList(T, m)}
     ${liftList(T, r)}
     <div class="cv-foot">
@@ -694,17 +740,12 @@ function overallPanel(T, data, wired, dayOneEmpty) {
     : "";
 
   const body = dayOneEmpty ? "" : `
-    <p class="cv-sentence">${esc(T("cvg.overallSentence", {
-      estimated: m.estimated, assessed: m.assessed, abstained: m.abstained,
-    }))}</p>
     ${causesList(T, m)}
     ${latam ? `<p class="cv-latam">${esc(T("cvg.latamLine", {
       a: latam.measured.assessed, t: latam.measured.total_accounts,
       level: T(`cov.${wired.LATAM || "none"}`),
     }))}</p>` : ""}
-    ${unassigned > 0 ? `<p class="cv-note">${esc(T("cvg.unassignedRegion", { n: unassigned }))}</p>` : ""}
-    <p class="cv-argument">${esc(T("cvg.argument"))}</p>
-    <p class="cv-note">${esc(T("cvg.railHint"))}</p>`;
+    ${unassigned > 0 ? `<p class="cv-note">${esc(T("cvg.unassignedRegion", { n: unassigned }))}</p>` : ""}`;
 
   return `<section class="cov-panel" data-panel="ALL">
     <header class="cv-head">
@@ -780,6 +821,108 @@ function constraintTable(T, data) {
   }, T);
 }
 
+/* ================= the registry, absorbed from Sources ============== */
+/* Sources is the inventory, Coverage is the consequence. One table, and
+   the detail a first-time reader wants (what it unlocks, where it stops,
+   what each connected source does in an assessment and in the accuracy
+   score) lives in the row's own expansion, one click away. */
+
+const REGION_SHORT = { NORTHAMERICA: "NA", EUROPE: "EU", APAC: "APAC", LATAM: "LATAM", AMEA: "AMEA" };
+const KIND_KEY = {
+  evidence: "cvg.kind.evidence",
+  volume: "cvg.kind.volume",
+  footprint: "cvg.kind.footprint",
+  timing: "dim.timing",
+  truth: "cvg.kind.truth",
+};
+const CHEAP = new Set(["free", "low"]);
+const ROLE_GRADES = { web_search: false, sec_edgar: true };
+const CHEV_SVG = `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 7l3-3.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/** Three states, derived by the registry, not declared: wired, credential
+ *  held with no reader built, and neither. `key_held` said "Available"
+ *  before this merge, which was the only untrue cell on the old page. */
+function statusMark(T, status) {
+  if (status === "connected") return mark("filled", T("src.connected"), { tone: "ok" });
+  if (status === "key_held") return mark("half", T("cvg.st.key_held"), { tone: "warn" });
+  return mark("hollow", T("cvg.st.available"), { tone: "mute" });
+}
+
+function regionStrip(source) {
+  const items = Object.keys(REGION_SHORT).map((r) => {
+    const lvl = source.coverage?.[r] || "none";
+    return `<span class="src-rs-i">${level(LEVEL_N[lvl] ?? 0, 3, REGION_SHORT[r])}</span>`;
+  }).join("");
+  return `<div class="src-rs">${items}</div>`;
+}
+
+function registryExpansion(T, source) {
+  const rows = Object.keys(REGION_SHORT).map((r) => {
+    const lvl = source.coverage?.[r] || "none";
+    return `<div class="src-exp-row"><span class="t-data">${esc(T(`cvg.r.${r}`))}</span>${level(LEVEL_N[lvl] ?? 0, 3, T(`cov.${lvl}`))}</div>`;
+  }).join("");
+
+  const grades = ROLE_GRADES[source.id];
+  const roleKeyA = `cvg.role.${source.id}.assess`;
+  const roleKeyB = `cvg.role.${source.id}.accuracy`;
+  const hasRole = grades !== undefined;
+  const roles = source.status !== "connected" ? "" : `
+    <div><span class="t-label ink-3">${esc(T("cvg.inAssess"))}</span>
+      <p class="t-body">${esc(hasRole ? T(roleKeyA) : T("cvg.roleNone"))}</p></div>
+    <div><span class="t-label ink-3">${esc(T("cvg.inAccuracy"))}</span>
+      ${hasRole ? mark(grades ? "filled" : "hatch", T(grades ? "cvg.gradesTool" : "cvg.cannotGrade"), { tone: grades ? "ok" : "held" }) : ""}
+      <p class="t-body">${esc(hasRole ? T(roleKeyB) : T("cvg.roleNone"))}</p></div>`;
+
+  return `<div class="src-exp">
+    <div><span class="t-label ink-3">${esc(T("src.unlocks"))}</span><p class="t-body">${esc(source.unlocks)}</p></div>
+    <div><span class="t-label ink-3">${esc(T("src.limits"))}</span><p class="t-body">${esc(source.limits)}</p></div>
+    <div><span class="t-label ink-3">${esc(T("src.covByRegion"))}</span>
+      <div class="src-exp-grid">${rows}</div>
+    </div>
+    ${roles}
+  </div>`;
+}
+
+function registryRow(T, source, isNext) {
+  const what = source.status === "key_held"
+    ? `${source.what} ${T("cvg.st.keyHeldWhat")}`
+    : source.what;
+  const nameCell = `<div class="src-row-name">
+    ${statusMark(T, source.status)}
+    <span class="src-row-txt">
+      <b class="t-data">${esc(source.name)}${isNext ? `<span class="src-next t-label">${esc(T("cvg.nextUp"))}</span>` : ""}</b>
+      <span class="src-what">${esc(what)}</span>
+    </span>
+  </div>`;
+  return {
+    id: source.id,
+    cells: [
+      nameCell,
+      `<span class="t-label ink-3">${esc(T(KIND_KEY[source.kind] || source.kind))}</span>`,
+      `<span class="t-data">${esc(costWord(T, source.cost))}</span>`,
+      regionStrip(source),
+      `<div class="chev-cell"><button type="button" class="btn-icon chev" data-action="src:expand" aria-expanded="false" aria-label="${esc(T("cvg.rowDetailsAria"))}">${CHEV_SVG}</button></div>`,
+    ],
+    inset: registryExpansion(T, source),
+  };
+}
+
+function ruleDialogBody(T) {
+  return `
+    ${field({ id: "rd-pattern", label: T("rules.pattern"), placeholder: T("rules.phPattern"), hint: T("rules.patternHint"), mono: true })}
+    ${field({ id: "rd-tier", label: T("rules.tier"), options: [
+      { value: "primary_filing", label: T("tier.primaryStrong") },
+      { value: "self_published", label: T("tier.self") },
+      { value: "documentation", label: T("tier.doc") },
+      { value: "third_party", label: T("tier.third") },
+    ] })}
+    ${field({ id: "rd-label", label: T("rules.fldLabel"), placeholder: T("rules.phLabel") })}
+    ${field({ id: "rd-weight", label: T("rules.weight"), type: "number", value: "0.8", step: "0.05", min: "0", max: "1", hint: T("rules.weightHint"), mono: true })}
+    ${field({ id: "rd-position", label: T("rules.order"), type: "number", value: "500", step: "1", min: "1", hint: T("rules.dlgHint"), mono: true })}
+    ${field({ id: "rd-note", label: T("rules.fldNote"), placeholder: T("rules.phNote") })}
+  `;
+}
+
 /* ============================= render ============================== */
 
 export async function render(env, data, ctx) {
@@ -809,12 +952,12 @@ export async function render(env, data, ctx) {
   const dayOneEmpty = om.assessed === 0;
   const minSample = data.min_sample ?? 5;
   // Derived per request, so wiring a source changes this page without anyone
-  // editing a constant. Falls back to the registry only so a stale caller
-  // cannot blank the section entirely.
-  const connected = connectedFrom(data.sourceRegistry || data);
-
-  const caption = esc(T("cvg.modeCaption")) +
-    (dayOneEmpty ? " " + esc(T("cvg.modeCaptionEmpty")) : "");
+  // editing a constant. Awaited because the router hands the registry over
+  // as a promise; falls back to the raw list only so a stale caller cannot
+  // blank the section entirely.
+  const registry = (await (data.sourceRegistry || data)) || {};
+  const allSources = registry.sources || RAW_SOURCES;
+  const connected = allSources.filter((s) => s.status === "connected");
 
   const panels = [
     overallPanel(T, data, wired, dayOneEmpty),
@@ -827,10 +970,46 @@ export async function render(env, data, ctx) {
   const constraintSection = section({
     label: T("cvg.oneLabel"),
     title: T("cvg.oneTitle"),
-    sub: esc(T("cvg.oneSub")),
     body: `${constraintTable(T, data)}
       <p class="cv-onefoot t-body">${esc(T("cvg.oneFoot"))}</p>
       <p class="cv-onelink"><a href="/evals">${esc(T("cvg.seeAccuracy"))} &rarr;</a></p>`,
+  });
+
+  /* the inventory beneath the consequence: one table, three statuses,
+     everything else behind the row expansion */
+  const nextIds = new Set(
+    allSources.filter((s) => s.status !== "connected" && s.kind === "volume" && CHEAP.has(s.cost))
+      .map((s) => s.id)
+  );
+  const nConnected = allSources.filter((s) => s.status === "connected").length;
+
+  const registrySection = `<div id="registry">${section({
+    title: T("src.regTitle"),
+    sub: esc(T("cvg.regSub", { connected: nConnected, total: allSources.length })),
+    body: table({
+      cols: [
+        { key: "source", label: T("cvg.colSource") },
+        { key: "kind", label: T("cvg.colKind"), width: 120 },
+        { key: "cost", label: T("cvg.colCost"), width: 110 },
+        { key: "cov", label: T("cvg.colCoverage"), width: 320 },
+        { key: "chev", label: "", width: 36 },
+      ],
+      rows: allSources.map((s) => registryRow(T, s, nextIds.has(s.id))),
+      size: "tall",
+    }, T),
+  })}</div>`;
+
+  const rulesSection = section({
+    title: T("rules.title"),
+    sub: esc(T("cvg.rulesSub")),
+    actions: `
+      <input type="text" id="rule-test-url" class="input mono" placeholder="${esc(T("rules.testPh"))}" aria-label="${esc(T("rules.testLabel"))}" disabled>
+      ${btn(T("rules.add"), { kind: "primary", id: "rule-add-btn" })}
+    `,
+    body: `
+      <p class="t-data ink-3" id="rule-test-result">${esc(T("rules.testEmpty"))}</p>
+      <div id="rules-slot">${Array.from({ length: 5 }).map(() => `<div class="ph-row"></div>`).join("")}</div>
+    `,
   });
 
   return `
@@ -840,12 +1019,11 @@ export async function render(env, data, ctx) {
       <span class="whead-meta">${esc(T("cvg.metaLine", {
         assessed: om.assessed, total: om.total_accounts,
         estimated: om.estimated, abstained: om.abstained,
+        conn: nConnected, srcTotal: allSources.length,
       }))}</span>
     </div>
-    <div class="whead-a">${btn(T("cvg.sourcesBtn"), { kind: "quiet", href: "/sources" })}</div>
+    <div class="whead-a">${btn(T("cvg.sourcesBtn"), { kind: "quiet", href: "#registry" })}</div>
   </div>
-
-  <p class="cov-claim t-body">${esc(T("cvg.claim"))}</p>
 
   <div class="cov-wrap">
     <div class="cov-grid">
@@ -858,7 +1036,6 @@ export async function render(env, data, ctx) {
             </div>
             ${ownersMap ? `<button type="button" class="cov-terr-btn" aria-pressed="false">${esc(T("cvg.territories"))}</button>` : ""}
           </div>
-          <p class="cov-caption">${caption}</p>
           ${fieldSvg(data, T, wired, ownersMap, false)}
         </div>
         <div class="cov-legend">
@@ -871,7 +1048,10 @@ export async function render(env, data, ctx) {
     </div>
   </div>
 
-  ${constraintSection}`;
+  ${constraintSection}
+  ${registrySection}
+  ${rulesSection}
+  ${dialog({ id: "rule-dlg", title: T("rules.dlgTitle"), body: ruleDialogBody(T), confirm: T("action.save") }, T)}`;
 }
 
 /* =============================== css =============================== */
@@ -1026,6 +1206,28 @@ export function css() {
 
 .p-coverage .cv-foot { margin-top: 16px; }
 
+/* ---- the registry and the rules, absorbed from the Sources page ---- */
+.p-coverage .src-rs { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.p-coverage .src-rs-i .mk-w { font-size: 11px; }
+.p-coverage .src-row-name { display: flex; align-items: flex-start; gap: 8px; }
+.p-coverage .src-row-name .mk { margin-top: 3px; }
+.p-coverage .src-row-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.p-coverage .src-row-txt b { font-weight: 500; }
+.p-coverage .src-what { display: block; color: var(--ink-3); font-size: 12px; line-height: 1.4; max-width: 46ch; }
+.p-coverage .src-next { color: var(--ink-3); margin-left: 8px; white-space: nowrap; }
+.p-coverage .chev-cell { display: flex; justify-content: flex-end; }
+.p-coverage .chev svg { transition: transform .18s var(--ease); }
+.p-coverage .chev[aria-expanded="true"] svg { transform: rotate(180deg); }
+.p-coverage .src-exp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.p-coverage .src-exp p { margin-top: 4px; max-width: 46ch; }
+.p-coverage .src-exp .mk { margin-top: 4px; }
+.p-coverage .src-exp-grid { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.p-coverage .src-exp-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.p-coverage .rule-tier { display: flex; flex-direction: column; gap: 3px; }
+.p-coverage #rule-test-url { width: 320px; max-width: 40vw; }
+.p-coverage #rule-test-result { margin-top: 0; min-height: 1.45em; }
+.p-coverage .foot { max-width: 78ch; margin-top: 12px; }
+
 /* ---- the one-constraint table ---- */
 .p-coverage .cv-tr-name { font-weight: 500; }
 .p-coverage .cv-onefoot { margin-top: 16px; max-width: 78ch; color: var(--ink-2); }
@@ -1038,6 +1240,10 @@ export function css() {
   .p-coverage .cov-grid { grid-template-columns: minmax(0, 1fr); }
   .p-coverage .cov-rail { border-top: 1px solid var(--line); padding-top: 24px; }
   .p-coverage .cov-panel { border-top: none; padding-top: 0; }
+}
+@media (max-width: 900px) {
+  .p-coverage .src-exp { grid-template-columns: 1fr; }
+  .p-coverage #rule-test-url { width: 180px; }
 }
 @media (max-width: 720px) {
   .p-coverage .cov-field { padding: 12px 12px 8px; }
@@ -1122,5 +1328,326 @@ export function script() {
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
+})();
+
+/* ---- the registry expansion and the classification rules, absorbed
+   from the Sources page. The rules region is client-fetched by design
+   (DESIGN-SPEC 3.10), so its markup is hand-built here to match kit.js
+   class for class: a plain inline script cannot import an ES module. ---- */
+(function () {
+  "use strict";
+
+  var RULES = [];
+  var TOTAL = 0;
+  var UNMATCHED = 0;
+  var FALLBACK_W = 0.35;
+  var editingId = null;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/\\s*[\\u2014\\u2015]\\s*/g, ", ")
+      .replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+  }
+  function fmtNum(n) {
+    return (n == null || isNaN(Number(n))) ? "" : Number(n).toLocaleString("en-US");
+  }
+  var HOLLOW = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+  var DOTS_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="11.5" cy="7" r="1.3"/></svg>';
+
+  function ruleMenuHtml(items) {
+    var rows = items.map(function (it) {
+      if (it === "-") return '<div class="menu-sep" role="separator"></div>';
+      var danger = it.danger ? " danger" : "";
+      return '<button type="button" class="menu-item' + danger + '" role="menuitem" data-action="' + esc(it.action || "") + '"' + (it.danger ? ' data-danger="1"' : "") + '>' + esc(it.label) + "</button>";
+    }).join("");
+    return '<div class="menu-host"><button type="button" class="btn-icon menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="' + esc(Floor.t("kit.menu.aria")) + '">' + DOTS_SVG + '</button><div class="menu" role="menu" hidden>' + rows + "</div></div>";
+  }
+
+  function ruleTableHead() {
+    return "<tr>" +
+      '<th class="num" style="width:56px">' + esc(Floor.t("rules.order")) + "</th>" +
+      "<th>" + esc(Floor.t("rules.pattern")) + "</th>" +
+      "<th>" + esc(Floor.t("rules.tier")) + "</th>" +
+      '<th class="num" style="width:72px">' + esc(Floor.t("rules.weight")) + "</th>" +
+      '<th class="num" style="width:96px">' + esc(Floor.t("rules.matches")) + "</th>" +
+      "<th>" + esc(Floor.t("rules.why")) + "</th>" +
+      '<th class="col-menu"></th>' +
+    "</tr>";
+  }
+
+  /* A disabled rule keeps its row, its order, its pattern and its menu,
+     and the first thing that menu offers is Enable. Nothing here may hide
+     a rule that is off: that is how a rule once took its own undo off the
+     screen with it. */
+  function ruleRowHtml(r, idx, total) {
+    var dim = !r.enabled;
+    var tierLabel = r.label || r.tier;
+    var tierCell = '<div class="rule-tier"><span class="t-data">' + esc(tierLabel) + "</span>" +
+      (dim ? '<span class="mk tone-mute">' + HOLLOW + '<span class="mk-w">' + esc(Floor.t("rules.off")) + "</span></span>" : "") + "</div>";
+    var matches = r.enabled ? fmtNum(r.matches || 0) : "\\u2013";
+    var items = [];
+    items.push({ label: r.enabled ? Floor.t("rules.disable") : Floor.t("rules.enable"), action: "rule:toggle" });
+    items.push({ label: Floor.t("rules.edit"), action: "rule:edit" });
+    if (idx > 0) items.push({ label: Floor.t("rules.moveUp"), action: "rule:moveup" });
+    if (idx < total - 1) items.push({ label: Floor.t("rules.moveDown"), action: "rule:movedown" });
+    if (!r.builtin) { items.push("-"); items.push({ label: Floor.t("rules.delete"), action: "rule:delete", danger: true }); }
+    var cls = dim ? ' class="row-dim"' : "";
+    return '<tr data-id="' + esc(r.id) + '"' + cls + ">" +
+      '<td class="num mono">' + esc(r.position) + "</td>" +
+      '<td class="mono">' + esc(r.pattern) + "</td>" +
+      "<td>" + tierCell + "</td>" +
+      '<td class="num mono">' + esc(Number(r.weight).toFixed(2)) + "</td>" +
+      '<td class="num mono">' + matches + "</td>" +
+      '<td class="ink-3">' + esc(r.note || "") + "</td>" +
+      '<td class="col-menu">' + ruleMenuHtml(items) + "</td>" +
+    "</tr>";
+  }
+
+  function sortedRules() {
+    return RULES.slice().sort(function (a, b) { return a.position - b.position || a.id - b.id; });
+  }
+
+  function renderRulesSlot() {
+    var sorted = sortedRules();
+    var bodyHtml = sorted.length
+      ? sorted.map(function (r, i) { return ruleRowHtml(r, i, sorted.length); }).join("")
+      : '<tr><td colspan="7" style="height:auto;border-bottom:0;padding:16px 0"><div class="f-empty"><p>' + esc(Floor.t("rules.empty")) + "</p></div></td></tr>";
+    return '<div id="rules-slot">' +
+      '<div class="tbl-wrap"><table class="tbl tbl-dense"><thead>' + ruleTableHead() + "</thead><tbody>" + bodyHtml + "</tbody></table></div>" +
+      '<p class="foot t-data ink-3">' + Floor.t("rules.footA", { total: TOTAL, unmatched: UNMATCHED, w: FALLBACK_W }) + "</p>" +
+    "</div>";
+  }
+
+  function paintRules() { Floor.replace("#rules-slot", renderRulesSlot()); }
+
+  function fetchRules() {
+    fetch("/api/source-rules").then(function (r) { return r.json(); }).then(function (d) {
+      RULES = d.rules || [];
+      TOTAL = d.total || 0;
+      UNMATCHED = d.unmatched || 0;
+      FALLBACK_W = d.fallback_weight != null ? d.fallback_weight : 0.35;
+      var testInput = document.getElementById("rule-test-url");
+      if (testInput) testInput.disabled = false;
+      paintRules();
+    }).catch(function () {
+      var slot = document.getElementById("rules-slot");
+      if (slot) slot.innerHTML =
+        '<p class="f-error">' + esc(Floor.t("rules.loadFail")) +
+        ' <button type="button" class="btn btn-text" id="rules-retry">' + esc(Floor.t("action.retry")) + "</button></p>";
+    });
+  }
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "rules-retry") fetchRules();
+  });
+
+  function setFieldError(id, msg) {
+    var ctrl = document.getElementById(id);
+    if (!ctrl) return;
+    var wrap = ctrl.closest(".fld");
+    if (!wrap) return;
+    var err = wrap.querySelector(".fld-err");
+    if (!msg) {
+      if (err) err.remove();
+      ctrl.removeAttribute("aria-invalid");
+      return;
+    }
+    if (!err) {
+      err = document.createElement("p");
+      err.className = "fld-err";
+      wrap.appendChild(err);
+    }
+    err.textContent = msg;
+    ctrl.setAttribute("aria-invalid", "true");
+  }
+  function clearRuleFormErrors() {
+    ["rd-pattern", "rd-weight", "rd-position"].forEach(function (id) { setFieldError(id, null); });
+  }
+
+  var ruleDlg = document.getElementById("rule-dlg");
+
+  function nextPosition() {
+    if (!RULES.length) return 500;
+    return RULES.reduce(function (a, r) { return Math.max(a, r.position); }, 0) + 10;
+  }
+
+  function openRuleDialog(rule) {
+    if (!ruleDlg) return;
+    clearRuleFormErrors();
+    editingId = rule ? rule.id : null;
+    var titleEl = document.getElementById("rule-dlg-t");
+    if (titleEl) titleEl.textContent = rule ? Floor.t("rules.editTitle") : Floor.t("rules.dlgTitle");
+    document.getElementById("rd-pattern").value = rule ? rule.pattern : "";
+    document.getElementById("rd-tier").value = rule ? rule.tier : "primary_filing";
+    document.getElementById("rd-label").value = rule ? (rule.label || "") : "";
+    document.getElementById("rd-weight").value = rule ? rule.weight : 0.8;
+    document.getElementById("rd-position").value = rule ? rule.position : nextPosition();
+    document.getElementById("rd-note").value = rule ? (rule.note || "") : "";
+    ruleDlg.showModal();
+  }
+
+  var addBtn = document.getElementById("rule-add-btn");
+  if (addBtn) addBtn.addEventListener("click", function () { openRuleDialog(null); });
+
+  function findDuplicate(pattern, excludeId) {
+    var p = pattern.trim().toLowerCase();
+    return RULES.find(function (r) { return r.id !== excludeId && String(r.pattern).toLowerCase() === p; });
+  }
+
+  function validateAndCollect() {
+    var pattern = document.getElementById("rd-pattern").value.trim();
+    var tier = document.getElementById("rd-tier").value;
+    var label = document.getElementById("rd-label").value.trim();
+    var weight = Number(document.getElementById("rd-weight").value);
+    var position = Number(document.getElementById("rd-position").value);
+    var note = document.getElementById("rd-note").value.trim();
+    var ok = true;
+    clearRuleFormErrors();
+    if (!pattern) { setFieldError("rd-pattern", Floor.t("rules.patternRequired")); ok = false; }
+    else {
+      var dup = findDuplicate(pattern, editingId);
+      if (dup) { setFieldError("rd-pattern", Floor.t("rules.dupBlock", { order: dup.position, label: dup.label })); ok = false; }
+    }
+    if (isNaN(weight) || weight < 0 || weight > 1) { setFieldError("rd-weight", Floor.t("rules.weightRange")); ok = false; }
+    if (isNaN(position) || position < 1) { setFieldError("rd-position", Floor.t("rules.positionRange")); ok = false; }
+    if (!ok) return null;
+    return { pattern: pattern, tier: tier, label: label || undefined, weight: weight, position: position, note: note || undefined };
+  }
+
+  function friendlyRuleError(msg) {
+    if (msg === "pattern_and_tier_required") return Floor.t("rules.patternRequired");
+    if (msg === "unknown_tier") return Floor.t("rules.unknownTier");
+    return msg;
+  }
+
+  function applyRulesPayload(d) {
+    RULES = d.rules || RULES;
+    if (d.total != null) TOTAL = d.total;
+    if (d.unmatched != null) UNMATCHED = d.unmatched;
+    if (d.fallback_weight != null) FALLBACK_W = d.fallback_weight;
+  }
+
+  var ruleForm = ruleDlg ? ruleDlg.querySelector("form") : null;
+  if (ruleForm) {
+    ruleForm.addEventListener("submit", function (e) {
+      var submitter = e.submitter;
+      if (!submitter || submitter.value !== "confirm") return;
+      e.preventDefault();
+      var payload = validateAndCollect();
+      if (!payload) return;
+      var wasEdit = editingId != null;
+      if (wasEdit) payload.id = editingId;
+      Floor.post("/api/source-rules", payload).then(function (d) {
+        applyRulesPayload(d);
+        paintRules();
+        ruleDlg.close();
+        editingId = null;
+        Floor.toast(wasEdit ? Floor.t("rules.savedToast") : Floor.t("rules.addedToast"));
+      }).catch(function (err) {
+        setFieldError("rd-pattern", friendlyRuleError((err && err.message) || Floor.t("rules.loadFail")));
+      });
+    });
+  }
+
+  document.addEventListener("floor:action", function (e) {
+    var detail = e.detail || {};
+    var action = detail.action;
+
+    if (action === "src:expand") {
+      var elBtn = detail.el;
+      var tr = elBtn && elBtn.closest("tr");
+      var next = tr && tr.nextElementSibling;
+      if (next && next.classList.contains("tbl-inset")) {
+        var willOpen = next.hidden;
+        next.hidden = !willOpen;
+        elBtn.setAttribute("aria-expanded", String(willOpen));
+      }
+      return;
+    }
+
+    if (!action || action.indexOf("rule:") !== 0) return;
+    var id = detail.id != null ? Number(detail.id) : null;
+    var rule = RULES.find(function (r) { return r.id === id; });
+
+    if (action === "rule:edit") { if (rule) openRuleDialog(rule); return; }
+
+    if (action === "rule:toggle") {
+      if (!rule) return;
+      var wasEnabled = rule.enabled;
+      Floor.post("/api/source-rules", { toggle_id: id }).then(function (d) {
+        applyRulesPayload(d);
+        paintRules();
+        Floor.toast(wasEnabled ? Floor.t("rules.disabledToast") : Floor.t("rules.enabledToast"), {
+          undo: function () {
+            Floor.post("/api/source-rules", { toggle_id: id }).then(function (d2) { applyRulesPayload(d2); paintRules(); });
+          },
+        });
+      }).catch(function (err) { Floor.toast(Floor.t("common.notSaved", { err: err.message })); });
+      return;
+    }
+
+    if (action === "rule:delete") {
+      if (!rule) return;
+      var snap = rule;
+      Floor.post("/api/source-rules", { delete_id: id }).then(function (d) {
+        applyRulesPayload(d);
+        paintRules();
+        Floor.toast(Floor.t("rules.deletedToast"), {
+          undo: function () {
+            Floor.post("/api/source-rules", {
+              pattern: snap.pattern, tier: snap.tier, label: snap.label,
+              weight: snap.weight, position: snap.position, note: snap.note,
+            }).then(function (d2) { applyRulesPayload(d2); paintRules(); });
+          },
+        });
+      }).catch(function (err) { Floor.toast(Floor.t("common.notSaved", { err: err.message })); });
+      return;
+    }
+
+    if (action === "rule:moveup" || action === "rule:movedown") {
+      var sorted = sortedRules();
+      var idx = sorted.findIndex(function (r) { return r.id === id; });
+      var swapWith = action === "rule:moveup" ? idx - 1 : idx + 1;
+      if (idx < 0 || swapWith < 0 || swapWith >= sorted.length) return;
+      var tmp = sorted[idx]; sorted[idx] = sorted[swapWith]; sorted[swapWith] = tmp;
+      var ids = sorted.map(function (r) { return r.id; });
+      Floor.post("/api/source-rules/reorder", { ids: ids }).then(function (d) {
+        (d.order || []).forEach(function (o) {
+          var r = RULES.find(function (rr) { return rr.id === o.id; });
+          if (r) r.position = o.position;
+        });
+        paintRules();
+      }).catch(function (err) { Floor.toast(Floor.t("common.notSaved", { err: err.message })); });
+      return;
+    }
+  });
+
+  /* the rule tester: a read-only client replica of the server's
+     first-match-wins substring classifier */
+  function classifyClient(url) {
+    if (!url) return null;
+    var u = url.toLowerCase();
+    var active = RULES.filter(function (r) { return r.enabled; }).sort(function (a, b) { return a.position - b.position; });
+    for (var i = 0; i < active.length; i++) {
+      if (u.indexOf(String(active[i].pattern).toLowerCase()) !== -1) return active[i];
+    }
+    return null;
+  }
+
+  var testInput = document.getElementById("rule-test-url");
+  var testResult = document.getElementById("rule-test-result");
+  if (testInput && testResult) {
+    testInput.addEventListener("input", function () {
+      var v = testInput.value.trim();
+      if (!v) { testResult.textContent = Floor.t("rules.testEmpty"); return; }
+      var match = classifyClient(v);
+      testResult.textContent = match
+        ? Floor.t("rules.testMatch", { order: match.position, tier: match.label || match.tier, w: Number(match.weight).toFixed(2) })
+        : Floor.t("rules.testNoMatch", { tier: Floor.t("tier.unclassified"), w: FALLBACK_W });
+    });
+  }
+
+  fetchRules();
 })();`;
 }

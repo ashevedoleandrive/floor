@@ -56,8 +56,17 @@ export const keys = {
 
   /* latest eval */
   "evals.emptyBody": {
-    en: "No eval has run. Establish truth for at least one assessed merchant below, then run it: stored predictions are graded against the filings, and nothing is re-run to look better.",
-    es: "No se ha corrido ninguna evaluación. Establece la verdad de al menos un comercio ya analizado aquí abajo y córrela: las predicciones guardadas se califican contra los informes, y nada se vuelve a correr para verse mejor.",
+    en: "No eval has run. Establish truth for at least one assessed merchant below, then run it.",
+    es: "No se ha corrido ninguna evaluación. Establece la verdad de al menos un comercio ya analizado aquí abajo y córrela.",
+  },
+  "evals.notRunShort": { en: "not run yet", es: "todavía sin correr" },
+  "evals.truthCounts": {
+    en: "{f} from filings · {h} by hand · {c} candidates",
+    es: "{f} de informes · {h} a mano · {c} candidatos",
+  },
+  "evals.pendingCost": {
+    en: "{n} × {per} = {c} to assess them all",
+    es: "{n} × {per} = {c} para analizarlos todos",
   },
   "evals.missAbove": {
     en: "{d}: the disclosed truth of {t} sits {p} above the predicted midpoint of {m}.",
@@ -75,18 +84,10 @@ export const keys = {
     en: "The floor call was wrong here too.",
     es: "El veredicto de umbral también falló aquí.",
   },
-  "evals.missWhy": {
-    en: "A truth carries its date; an estimate assembled from older filings will trail a growing merchant. The gap is reported at full size rather than smoothed, because an eval that only ever agrees is not a check.",
-    es: "La verdad lleva su fecha; una estimación armada con informes anteriores queda detrás de un comercio que crece. La brecha se reporta a tamaño completo en lugar de suavizarse, porque una evaluación que siempre está de acuerdo no es un control.",
-  },
 
   /* reliability by slice */
   "evals.segLabel": { en: "Reliability by slice", es: "Fiabilidad por segmento" },
   "evals.segTitle": { en: "Where the accuracy holds", es: "Dónde se sostiene la precisión" },
-  "evals.segSub": {
-    en: "one blended percentage hides which class is failing, so the rate reports per slice, and a slice says how many more it needs rather than printing a rate it has not earned",
-    es: "un porcentaje mezclado esconde cuál clase está fallando, así que la tasa se reporta por segmento, y un segmento demasiado pequeño para significar algo se retiene en lugar de imprimirse pequeño",
-  },
   "evals.dim.derivation": { en: "How derived", es: "Cómo se derivó" },
   "evals.dim.region":     { en: "Region", es: "Región" },
   "evals.dim.magnitude":  { en: "Size band", es: "Rango de tamaño" },
@@ -119,19 +120,15 @@ export const keys = {
     es: "Cuando Floor declara 0.90, la verdad debería caer dentro de su rango unas nueve de cada diez veces. Hasta que eso se mida, el número de confianza es una opinión.",
   },
   "evals.blindNote": {
-    en: "{r}: nothing assessed there discloses a figure to check against, so the gap is in the data, not in the effort.",
-    es: "{r}: nada de lo analizado allí publica una cifra comprobable, así que la brecha está en los datos, no en el esfuerzo.",
+    en: "{r}: nothing assessed there discloses a figure to check against.",
+    es: "{r}: nada de lo analizado allí publica una cifra comprobable.",
   },
 
   /* the truth base */
   "evals.truthTitle": { en: "Truth comes from the filings", es: "La verdad sale de los informes" },
-  "evals.truthSub": {
-    en: "the merchant's own regulator filing is read, the sentence is stored verbatim, and the conversion to a monthly rate runs in code. A person typing a figure is the exception, kept for what an extractor cannot read",
-    es: "se lee el informe regulatorio del propio comercio, la oración se guarda textual y la conversión a tasa mensual corre en código. Una persona escribiendo la cifra es la excepción, reservada para lo que un extractor no puede leer",
-  },
   "evals.checkFirst": {
-    en: "Establish {names} first: each covers a slice the measured set is blind to.",
-    es: "Establece primero {names}: cada uno cubre un segmento que el conjunto medido no alcanza.",
+    en: "Establish first: {names}",
+    es: "Establece primero: {names}",
   },
   "evals.rowGain": { en: "would newly measure: {g}", es: "mediría por primera vez: {g}" },
   "evals.colEst":  { en: "Established", es: "Establecida" },
@@ -159,10 +156,6 @@ export const keys = {
     en: "{n} disclose a figure but have no estimate to grade against",
     es: "{n} publican una cifra pero no tienen estimación que calificar",
   },
-  "evals.pendingBody": {
-    en: "Until Floor has assessed a merchant there is no prediction to compare a filing against, so the action here is assess, not verify. Assessing all of them costs about {c} at the measured rate.",
-    es: "Hasta que Floor analice un comercio no hay predicción que comparar contra un informe, así que la acción aquí es analizar, no verificar. Analizarlos todos cuesta unos {c} al costo medido.",
-  },
   "evals.assessFromQueue": { en: "assess from the queue", es: "analizar desde la cola" },
   "evals.noLinks": { en: "assessed, no filing links found", es: "analizada, sin enlaces a informes" },
 
@@ -170,8 +163,8 @@ export const keys = {
   "evals.addCandidate": { en: "Add candidate", es: "Agregar candidato" },
   "evals.addDlgTitle":  { en: "Add a gold-set candidate", es: "Agrega un candidato al set de referencia" },
   "evals.addDlgHint": {
-    en: "A candidate does not count toward accuracy until its figure is established from a filing or entered by a person with the source.",
-    es: "Un candidato no cuenta para la precisión hasta que su cifra se establece desde un informe o la ingresa una persona con la fuente.",
+    en: "A candidate counts toward accuracy once its figure is established from a filing or entered with its source.",
+    es: "Un candidato cuenta para la precisión cuando su cifra se establece desde un informe o se ingresa con su fuente.",
   },
   "evals.domain":     { en: "Domain",   es: "Dominio" },
   "evals.name":       { en: "Name",     es: "Nombre" },
@@ -188,8 +181,8 @@ export const keys = {
   },
   "evals.verifyConfirm": { en: "Verify", es: "Verificar" },
   "evals.verifyEffect": {
-    en: "A figure and a source are both required. That is the product refusing to fabricate trust, not a bug.",
-    es: "Se requieren la cifra y la fuente. Así la herramienta se niega a fabricar confianza, no es un error.",
+    en: "A figure and a source are both required.",
+    es: "Se requieren la cifra y la fuente.",
   },
 
   /* row menus */
@@ -445,7 +438,7 @@ function readingsHtml(items, t, goldBy) {
     const floorLine = t(i.floor_correct ? "evals.missFloorOk" : "evals.missFloorBad");
     return `<p class="ev-read"><b>${esc(sentence)}</b> ${esc(floorLine)}</p>`;
   }).join("");
-  return `<div class="ev-reads">${lines}<p class="ev-read ink-3">${esc(t("evals.missWhy"))}</p></div>`;
+  return `<div class="ev-reads">${lines}</div>`;
 }
 
 /* =================== reliability by slice (the grid) ================= */
@@ -498,6 +491,9 @@ function segBodyHtml(segments, blindNames, t) {
   const blind = blindNames.length
     ? `<p class="ev-note" id="ev-blind">${esc(t("evals.blindNote", { r: blindNames.join(", ") }))}</p>`
     : `<p class="ev-note" id="ev-blind" hidden></p>`;
+  /* what calibration means rides on the two columns it explains, so a
+     first-time reader can reach it and everyone else is not made to. */
+  const calTip = esc(t("evals.calNote"));
   return `<div class="tbl-wrap"><table class="tbl tbl-dense ev-segtbl">
     <thead><tr><th></th><th>${esc(t("evals.colSlice"))}</th><th class="num">${esc(t("evals.colScored"))}</th><th class="num">${esc(t("evals.colAbst"))}</th><th>${esc(t("eval.floorCall"))}</th><th>${esc(t("eval.inBandCol"))}</th></tr></thead>
     <tbody>${segRows(segments, t)}</tbody>
@@ -505,10 +501,9 @@ function segBodyHtml(segments, blindNames, t) {
   ${blind}
   <h3 class="t-label ev-cal-h">${esc(t("evals.dim.calibration"))}</h3>
   <div class="tbl-wrap"><table class="tbl tbl-dense ev-caltbl">
-    <thead><tr><th>${esc(t("evals.calBucket"))}</th><th class="num">${esc(t("evals.colScored"))}</th><th class="num">${esc(t("evals.colClaimed"))}</th><th>${esc(t("evals.colObserved"))}</th></tr></thead>
+    <thead><tr><th>${esc(t("evals.calBucket"))}</th><th class="num">${esc(t("evals.colScored"))}</th><th class="num" title="${calTip}">${esc(t("evals.colClaimed"))}</th><th title="${calTip}">${esc(t("evals.colObserved"))}</th></tr></thead>
     <tbody>${calRows(segments && segments.calibration, t)}</tbody>
-  </table></div>
-  <p class="ev-note">${esc(t("evals.calNote"))}</p>`;
+  </table></div>`;
 }
 
 /* ============================== render ================================ */
@@ -564,6 +559,10 @@ export async function render(env, data, ctx) {
   const goldBy = {};
   for (const g of rows) goldBy[g.domain] = g;
 
+  /* how the base was built, counted from the rows themselves */
+  const nFromFiling = rows.filter((g) => g.verified && g.established_by === "extraction").length;
+  const nByHand = rows.filter((g) => g.verified && g.established_by !== "extraction").length;
+
   const gains = {};
   for (const s of suggest.suggestions || []) {
     const parsed = gainSlices(s.gains, t);
@@ -607,7 +606,7 @@ export async function render(env, data, ctx) {
   const evalSection = section({
     label: t("eval.eyebrow"),
     title: t("eval.latest"),
-    sub: `<span id="eval-sub">${l ? esc(t("eval.runMeta", { n: l.n, date: dateISO(l.run_at) })) : esc(t("eval.notRun"))}</span>`,
+    sub: `<span id="eval-sub">${l ? esc(t("eval.runMeta", { n: l.n, date: dateISO(l.run_at) })) : esc(t("evals.notRunShort"))}</span>`,
     actions: `<div class="prog" id="eval-prog" hidden><i></i></div>${btn(t("eval.run"), { kind: "primary", id: "run-eval", action: "eval:run" })}`,
     body: `<div id="eval-body">${evalBody}</div>
       <p class="f-error" id="eval-error" hidden><span class="msg"></span> ${btn(t("evals.retry"), { kind: "text", action: "eval:run" })}</p>
@@ -619,7 +618,6 @@ export async function render(env, data, ctx) {
   const segSection = section({
     label: t("evals.segLabel"),
     title: t("evals.segTitle"),
-    sub: esc(t("evals.segSub")),
     body: `<div id="ev-seg">${segBodyHtml(segments, blindNames, t)}</div>`,
   });
 
@@ -634,7 +632,7 @@ export async function render(env, data, ctx) {
   const goldTable = `<div class="tbl-wrap"><table class="tbl ev-gold">
     <thead><tr>
       <th>${esc(t("eval.merchant"))}</th>
-      <th>${esc(t("gold.metric"))}</th>
+      <th title="${esc(t("evals.metricNote"))}">${esc(t("gold.metric"))}</th>
       <th class="num">${esc(t("gold.monthly"))}</th>
       <th>${esc(t("evals.colEst"))}</th>
       <th>${esc(t("ev.source"))}</th>
@@ -649,14 +647,16 @@ export async function render(env, data, ctx) {
       <span class="t-label">${esc(t("evals.pendingLabel"))}</span>
       <span class="ev-pend-t t-body" id="ev-pend-t">${esc(t("evals.pendingTitle", { n: pendingRows.length }))}</span>
     </div>
-    <p class="t-body ev-pend-b" id="ev-pend-b">${esc(t("evals.pendingBody", { c: pendingCost }))}</p>
+    <p class="t-body ev-pend-b" id="ev-pend-b">${esc(t("evals.pendingCost", { n: pendingRows.length, per: "$" + perAcct.toFixed(4), c: pendingCost }))}</p>
     <div id="ev-pend-list">${pendingRows.map((g) => pendingRowHtml(g, rowCtx)).join("")}</div>
   </div>`;
 
   const goldSection = section({
     label: t("gold.title"),
     title: t("evals.truthTitle"),
-    sub: esc(t("evals.truthSub")),
+    /* how the base was actually built, counted, where a paragraph used to
+       describe how it is built */
+    sub: esc(t("evals.truthCounts", { f: nFromFiling, h: nByHand, c: rows.length })),
     actions: btn(t("evals.addCandidate"), { kind: "quiet", action: "gold:openAdd" }),
     body: `<div class="ev-prog-row">
         <div class="prog" id="ev-gold-prog"><i style="width:${progPct}%"></i></div>
@@ -664,7 +664,6 @@ export async function render(env, data, ctx) {
       </div>
       <p class="ev-note" id="ev-first"${suggestNames ? "" : " hidden"}>${suggestNames ? esc(t("evals.checkFirst", { names: suggestNames })) : ""}</p>
       ${goldTable}
-      <p class="ev-note" id="ev-metric-note">${esc(t("evals.metricNote"))}</p>
       ${pendZone}`,
   });
 
@@ -1028,7 +1027,10 @@ export function script() {
       const pt = document.getElementById("ev-pend-t");
       if (pt) pt.textContent = t("evals.pendingTitle", { n: pending.length });
       const pb = document.getElementById("ev-pend-b");
-      if (pb) pb.textContent = t("evals.pendingBody", { c: "$" + (pending.length * COSTPER).toFixed(2) });
+      if (pb) pb.textContent = t("evals.pendingCost", {
+        n: pending.length, per: "$" + COSTPER.toFixed(4),
+        c: "$" + (pending.length * COSTPER).toFixed(2),
+      });
 
       refreshAggregates();
       if (flashId != null && window.Floor) {
@@ -1159,8 +1161,7 @@ export function script() {
         '<div class="tbl-wrap"><table class="tbl tbl-dense ev-segtbl"><thead><tr><th></th><th>' + esc(t("evals.colSlice")) + '</th><th class="num">' + esc(t("evals.colScored")) + '</th><th class="num">' + esc(t("evals.colAbst")) + '</th><th>' + esc(t("eval.floorCall")) + '</th><th>' + esc(t("eval.inBandCol")) + '</th></tr></thead><tbody>' + segTable(LAST_SEG) + '</tbody></table></div>' +
         '<p class="ev-note" id="ev-blind" hidden></p>' +
         '<h3 class="t-label ev-cal-h">' + esc(t("evals.dim.calibration")) + '</h3>' +
-        '<div class="tbl-wrap"><table class="tbl tbl-dense ev-caltbl"><thead><tr><th>' + esc(t("evals.calBucket")) + '</th><th class="num">' + esc(t("evals.colScored")) + '</th><th class="num">' + esc(t("evals.colClaimed")) + '</th><th>' + esc(t("evals.colObserved")) + '</th></tr></thead><tbody>' + calTable(LAST_SEG && LAST_SEG.calibration) + '</tbody></table></div>' +
-        '<p class="ev-note">' + esc(t("evals.calNote")) + '</p>';
+        '<div class="tbl-wrap"><table class="tbl tbl-dense ev-caltbl"><thead><tr><th>' + esc(t("evals.calBucket")) + '</th><th class="num">' + esc(t("evals.colScored")) + '</th><th class="num" title="' + esc(t("evals.calNote")) + '">' + esc(t("evals.colClaimed")) + '</th><th title="' + esc(t("evals.calNote")) + '">' + esc(t("evals.colObserved")) + '</th></tr></thead><tbody>' + calTable(LAST_SEG && LAST_SEG.calibration) + '</tbody></table></div>';
       renderBlind();
     }
 
@@ -1199,7 +1200,7 @@ export function script() {
         const sentence = t(key, { d: (g && g.name) || i.domain, t: fmtCount(i.truth), p: p, m: fmtCount(mid) });
         return '<p class="ev-read"><b>' + esc(sentence) + '</b> ' + esc(t(i.floor_correct ? "evals.missFloorOk" : "evals.missFloorBad")) + '</p>';
       }).join("");
-      return '<div class="ev-reads">' + lines + '<p class="ev-read ink-3">' + esc(t("evals.missWhy")) + '</p></div>';
+      return '<div class="ev-reads">' + lines + '</div>';
     }
     function renderLatestEval(res) {
       const body = document.getElementById("eval-body");
