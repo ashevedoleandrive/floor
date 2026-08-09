@@ -364,9 +364,26 @@ ${researchText}
 Return a verdict for every claim index above, then judge the estimate.`,
     schema: CRITIC_SCHEMA,
     effort: "high",
-    maxTokens: 8000,
+    // Raised from 8000 after Chewy. Thinking and output share this budget, and
+    // a merchant with eleven claims exhausted it before the critic finished
+    // issuing verdicts.
+    maxTokens: 16000,
   });
-  return { ok: r.ok, json: r.ok ? r.json : null, reason: r.reason, detail: r.detail, traces: model.traces };
+
+  // A truncated critic is not a quiet critic.
+  //
+  // finalise() defaults any claim with no verdict to "uncertain", which is the
+  // right reading when the critic considered a claim and hedged. It is the
+  // wrong reading when the critic never reached the claim at all: every verdict
+  // goes missing, everything reads as doubted, and the account abstains for
+  // "no surviving claim measures purchase volume" while its SEC filing sits
+  // right there in the evidence. Chewy failed exactly this way. Silence from a
+  // truncated call is absence of judgement, not judgement.
+  const truncated = (model.traces || []).some((t) => t.step === "critic" && t.stop_reason === "max_tokens");
+  return {
+    ok: r.ok, json: r.ok ? r.json : null, reason: r.reason, detail: r.detail,
+    truncated, traces: model.traces,
+  };
 }
 
 /**
@@ -376,7 +393,7 @@ Return a verdict for every claim index above, then judge the estimate.`,
  * wrong number is the one failure mode that would discredit the whole tool, so
  * the decision to emit one is not delegated to the thing being checked.
  */
-export function finalise({ extractJson, criticJson, allTraces, startedAt }) {
+export function finalise({ extractJson, criticJson, allTraces, startedAt, criticTruncated = false }) {
   const ex = extractJson || {};
   const claims = Array.isArray(ex.claims) ? ex.claims : [];
   const cr = criticJson || null;
@@ -433,6 +450,12 @@ export function finalise({ extractJson, criticJson, allTraces, startedAt }) {
   }
 
   const reasons = [];
+  // Say what actually happened. "No surviving claim measures volume" is true
+  // but it describes a consequence, and the cause was that the check never
+  // finished. An operator reading the first sentence would go looking for
+  // better sources for a merchant whose sources were already excellent.
+  if (criticTruncated && !verdicts.size)
+    reasons.push("the adversarial check did not finish, so no claim was judged and none can be trusted yet. Re-run to get a verdict");
   if (est.abstain) reasons.push(est.abstain_reason || "extractor abstained");
   if (!hasVolumeEvidence) reasons.push("no surviving claim measures purchase or transaction volume");
   if (!est.abstain && (est.txn_mid == null || est.txn_mid <= 0)) reasons.push("no usable volume figure");

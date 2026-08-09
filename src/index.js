@@ -469,6 +469,7 @@ async function runStage(env, ctx, jobId, origin) {
       const result = finalise({
         extractJson: payload.extract, criticJson: c.json,
         allTraces: traces, startedAt: null,
+        criticTruncated: !!c.truncated,
       });
       await finishJob(env, jobId, job.domain, account, settings, result);
       return;
