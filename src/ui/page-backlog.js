@@ -1,4 +1,4 @@
-/* Floor · page-backlog.js — the Backlog page (route /backlog)
+/* Floor · page-backlog.js, the Backlog page (route /backlog)
    ---------------------------------------------------------------------
    The GTM Engineering backlog: what would get built next, by area, and
    what gap each item closes. Per DESIGN-SPEC §4.9 this is the one page
@@ -449,16 +449,23 @@ export function script() {
   var editDlg = document.getElementById("card-edit");
   var editForm = editDlg ? editDlg.querySelector("form") : null;
 
+  /* Em dashes never reach the screen (product-wide rule). esc() also
+     HTML-escapes, which is wrong for a DOM .value assignment (it is not
+     HTML), so this does the dash-to-comma normalisation only. */
+  function normEm(s) {
+    return String(s == null ? "" : s).replace(/\\s*[\\u2014\\u2015]\\s*/g, ", ");
+  }
+
   function openEdit(id) {
     var c = CARDS[id];
     if (!c || !editDlg) return;
     editingId = id;
     clearErrs(["e-title", "e-gap", "e-metric"]);
     document.getElementById("e-area").value = c.area;
-    document.getElementById("e-title").value = c.title || "";
-    document.getElementById("e-gap").value = c.gap || "";
-    document.getElementById("e-metric").value = c.metric || "";
-    document.getElementById("e-owner").value = c.owner || "";
+    document.getElementById("e-title").value = normEm(c.title);
+    document.getElementById("e-gap").value = normEm(c.gap);
+    document.getElementById("e-metric").value = normEm(c.metric);
+    document.getElementById("e-owner").value = normEm(c.owner);
     document.getElementById("e-link").value = c.link || "";
     editDlg.showModal();
   }

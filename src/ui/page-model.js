@@ -64,7 +64,12 @@ function computeImpact({ sdrs, worked, mins, mins2, conv, conv2, win2, cost, acv
   const hoursNow = (accountsNow * n(mins)) / 60;
   const hoursNew = (accountsNow * n(mins2)) / 60;
   const freed = hoursNow - hoursNew;
-  const extra = n(mins2) > 0 ? Math.floor((freed * 60) / n(mins2)) : 0;
+  // Stay in minutes. Dividing into hours and multiplying back out lands a
+  // hair under the integer often enough to matter: across a sweep of ordinary
+  // inputs it printed 999 for 1000 and 1,299 for 1,300, always low and always
+  // on exactly the round figures somebody reads out loud.
+  const freedMinutes = accountsNow * (n(mins) - n(mins2));
+  const extra = n(mins2) > 0 ? Math.floor(freedMinutes / n(mins2)) : 0;
   const opps = accountsNow * (n(conv2) / 100 - n(conv) / 100);
   const monthlyCost = (accountsNow + extra) * n(cost);
   const acvN = Math.max(0, n(acv));
@@ -262,7 +267,10 @@ export function script() {
       var hoursNow = (accountsNow * mins) / 60;
       var hoursNew = (accountsNow * mins2) / 60;
       var freed = hoursNow - hoursNew;
-      var extra = mins2 > 0 ? Math.floor((freed * 60) / mins2) : 0;
+      // Minutes throughout; see the note on computeImpact. The client and the
+      // server must agree exactly, or the number changes when you touch a field.
+      var freedMinutes = accountsNow * (mins - mins2);
+      var extra = mins2 > 0 ? Math.floor(freedMinutes / mins2) : 0;
       var opps = accountsNow * (conv2 - conv);
       var monthlyCost = (accountsNow + extra) * cost;
 
