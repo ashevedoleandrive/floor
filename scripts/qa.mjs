@@ -45,7 +45,16 @@ const API = [
  * deliberate edit here rather than silently reducing coverage.
  */
 const REQUIRED = {
-  "/": ["#q-main", "#q-meta", "#q-data", "a[href='/api/export.csv']"],
+  // Every id the queue's client binds. Checking three of twenty-three was
+  // coverage theatre: a renamed dialog would have passed the gate and shipped a
+  // dead button, which is the exact failure this file exists to catch.
+  "/": [
+    "#q-main", "#q-meta", "#q-data", "#q-intro", "#q-filter", "#q-region", "#q-sort",
+    "#assess-form", "#assess-domain", "#assess-touched", "#assess-go", "#assess-out",
+    "#dlg-add", "#q-add-text", "#dlg-edit", "#q-e-name", "#q-e-region", "#q-e-owner",
+    "#q-e-touched", "#dlg-owner", "#q-o-owner", "#dlg-history", "#q-hist-body",
+    "a[href='/api/export.csv']",
+  ],
   "/backlog": ["#card-add", "#card-edit", "#bl-add-open", "#bl-arch-toggle", "#bl-header-count", "#c-area", "#c-status"],
   // Rebuilt pages bind different elements than the ones they replaced. Leaving
   // the old ids here would fail forever on a page that is working correctly,
