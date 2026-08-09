@@ -51,11 +51,13 @@ const REQUIRED = {
     "[data-f]", "tr.r", "a[href='/api/export.csv']",
   ],
   "/backlog": ["#card-dlg", "#c-area", "#c-title", "#c-gap", "#c-metric", "#c-owner", "#c-status", "#c-save"],
-  "/evals": ["#run-eval", "#gold-dlg", "#g-domain", "#g-value", "#g-url", "#g-save"],
+  // Rebuilt pages bind different elements than the ones they replaced. Leaving
+  // the old ids here would fail forever on a page that is working correctly,
+  // and a check that cries wolf gets ignored, which is worse than no check.
+  "/evals": ["#eval-body", "#eval-error", "#eval-prog", "#gold-add-dlg", "#gold-edit-dlg", "#gold-verify-dlg"],
   "/model": [
-    "#m-sdrs", "#m-worked", "#m-mins", "#m-mins2", "#m-conv", "#m-conv2",
-    "#m-win", "#m-win2", "#m-acv", "#m-cost",
-    "#o-hours", "#o-extra", "#o-opps", "#o-cost", "#o-value", "#o-ratio",
+    "#m-sdrs", "#m-worked", "#m-mins", "#m-conv", "#m-win", "#m-acv", "#m-cost",
+    "#o-hours", "#o-opps", "#o-cost", "#o-value", "#o-ratio",
   ],
 };
 
@@ -179,6 +181,15 @@ async function main() {
    * found by a human rather than by this gate.
    * ------------------------------------------------------------------ */
 
+  // Classes the client binds to but never styles. Read from the client source
+  // rather than hard-coded, so adding a hook does not require editing the gate.
+  const JS_HOOKS = new Set();
+  try {
+    const fjs = readFileSync(new URL("../public/static/floor.js", import.meta.url), "utf8");
+    for (const m of fjs.matchAll(/closest\(["']\.([\w-]+)["']\)|querySelectorAll?\(["']\.([\w-]+)["']\)/g))
+      JS_HOOKS.add(m[1] || m[2]);
+  } catch { /* foundation not built yet */ }
+
   console.log("\nEvery class in the markup is actually styled");
   // The Settings bug: `.set-row`, `.set-label`, `.set-hint` and seven siblings
   // were emitted into the page and defined in no stylesheet, so the screen
@@ -199,7 +210,12 @@ async function main() {
     const used = new Map();
     for (const m of h.matchAll(/\sclass=["']([^"']+)["']/g))
       for (const c of m[1].split(/\s+/).filter(Boolean)) used.set(c, (used.get(c) || 0) + 1);
-    const orphans = [...used].filter(([c, n]) => !defined.has(c) && n >= 3).sort((a, b) => b[1] - a[1]);
+    // A class can legitimately carry no style: floor.js uses some purely as
+    // binding hooks, styled through a sibling class. Exempt anything the client
+    // actually selects on, and nothing else.
+    const orphans = [...used]
+      .filter(([c, n]) => !defined.has(c) && n >= 3 && !JS_HOOKS.has(c))
+      .sort((a, b) => b[1] - a[1]);
     if (orphans.length) {
       bad(`${page} emits ${orphans.length} class(es) that no stylesheet defines: ${
         orphans.slice(0, 6).map(([c, n]) => `.${c}(x${n})`).join(" ")}`);

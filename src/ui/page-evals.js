@@ -281,11 +281,11 @@ export async function render(env, data, ctx) {
     sub: t("gold.sub"),
     actions: btn(t("evals.addCandidate"), { kind: "quiet", action: "gold:openAdd" }),
     body: `<div class="ev-prog-row">
-        <div class="prog"><i style="width:${progPct}%"></i></div>
-        <span class="mono ink-3 ev-prog-n">${esc(t("gold.progress", { a: verifiedActive, b: totalActive }))}</span>
+        <div class="prog" id="ev-gold-prog"><i style="width:${progPct}%"></i></div>
+        <span class="mono ink-3 ev-prog-n" id="ev-gold-prog-n">${esc(t("gold.progress", { a: verifiedActive, b: totalActive }))}</span>
       </div>
       ${goldTable}
-      <p class="t-body ink-3" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: totalActive }))}</p>`,
+      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: totalActive }))}</p>`,
   });
 
   const verifyDlg = dialog({
@@ -338,10 +338,10 @@ export async function render(env, data, ctx) {
     <div class="whead">
       <div class="whead-t">
         <h1 class="t-title">${esc(t("nav.accuracy"))}</h1>
-        <span class="whead-meta">${esc(t("gold.progress", { a: verifiedActive, b: totalActive }))}</span>
+        <span class="whead-meta" id="ev-verified-meta">${esc(t("gold.progress", { a: verifiedActive, b: totalActive }))}</span>
       </div>
     </div>
-    <div class="ev-meter">${meter}</div>
+    <div class="ev-meter" id="ev-meter">${meter}</div>
     ${evalSection}
     ${goldSection}
     ${verifyDlg}
@@ -506,11 +506,10 @@ export function script() {
     function updateGoldRow(g) {
       const i = GOLD.findIndex((x) => String(x.id) === String(g.id));
       if (i >= 0) GOLD[i] = g; else GOLD.push(g);
-      const table = $(".p-evals .c0:nth-of-type(2) table") || $$table();
       const tr = document.querySelector('tr[data-id="' + g.id + '"]');
       if (tr) { patchRow(tr, g); if (window.Floor) window.Floor.flash(tr); }
       else {
-        const tbody = document.querySelector(".p-evals .c0:last-of-type table tbody") || goldTbody();
+        const tbody = goldTbody();
         if (tbody) {
           const wrap = document.createElement("tbody");
           wrap.innerHTML = buildRowHtml(g);
@@ -521,14 +520,43 @@ export function script() {
           if (window.Floor) window.Floor.flash(newTr);
         }
       }
+      refreshAggregates();
     }
     function goldTbody() {
-      // The gold table is the second table on this page (after the eval
-      // results table, which may not exist yet); find it by its header row.
-      return [...document.querySelectorAll(".p-evals table")].map((tb) => tb.tBodies[0])
-        .find((b) => b && b.closest("table").querySelector('th')?.textContent);
+      // The gold table is the last table on this page (the eval results
+      // table, when it exists, renders first).
+      const tables = document.querySelectorAll(".p-evals table");
+      const last = tables[tables.length - 1];
+      return last ? last.tBodies[0] : null;
     }
-    function $$table() { return null; }
+
+    /* ---- page-level aggregates: header meta, the meter stat, the gold
+       progress bar and its footer count. A mutation that only patched the
+       row it touched would leave every one of these lying, so every gold
+       mutation refreshes them from the in-memory GOLD state. */
+    function activeStats() {
+      const active = GOLD.filter((g) => !g.archived_at);
+      return { total: active.length, verified: active.filter((g) => g.verified).length };
+    }
+    function refreshAggregates() {
+      const { total, verified } = activeStats();
+      const metaText = t("gold.progress", { a: verified, b: total });
+      const meta = document.getElementById("ev-verified-meta");
+      if (meta) meta.textContent = metaText;
+      const statV = document.querySelector("#ev-meter .stat:last-child .stat-v");
+      const statN = document.querySelector("#ev-meter .stat:last-child .stat-n");
+      if (statV) {
+        statV.classList.toggle("none", verified <= 0);
+        statV.textContent = verified > 0 ? verified + "/" + total : "–";
+      }
+      if (statN) statN.textContent = verified > 0 ? t("eval.humanChecked") : t("evals.goldNoneNote", { b: total });
+      const prog = document.getElementById("ev-gold-prog");
+      if (prog) { const bar = prog.querySelector("i"); if (bar) bar.style.width = (total ? Math.round((verified / total) * 100) : 0) + "%"; }
+      const progN = document.getElementById("ev-gold-prog-n");
+      if (progN) progN.textContent = metaText;
+      const foot = document.getElementById("ev-gold-foot");
+      if (foot) foot.textContent = t("gold.foot", { n: total });
+    }
 
     function goldById(id) { return GOLD.find((x) => String(x.id) === String(id)) || null; }
 

@@ -127,6 +127,7 @@ export const keys = {
     es: "Ya existe una regla para este patrón en el orden {order} ({label}). Edita esa en su lugar, o esta nunca coincidiría.",
   },
   "rules.unknownTier": { en: "Choose a classification tier.", es: "Elige un nivel de clasificación." },
+  "rules.edit":     { en: "Edit", es: "Editar" },
   "rules.fldLabel": { en: "Label shown on screen", es: "Etiqueta que se muestra" },
   "rules.fldNote":  { en: "Why this rule exists", es: "Por qué existe esta regla" },
   "rules.editTitle": { en: "Edit a classification rule", es: "Editar una regla de clasificación" },
