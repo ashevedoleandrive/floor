@@ -1,8 +1,15 @@
 # The page-module contract
 
 Read `docs/DESIGN-SPEC.md` first. This file says only how the code is arranged so
-that nine pages can be rebuilt independently without two authors ever editing the
-same file.
+that pages can be rebuilt independently without two authors ever editing the same
+file.
+
+There are six surfaces: Queue (`/`), Coverage, Accuracy (`/evals`), Case
+(`/model`), Backlog and Settings, plus the account detail page at
+`/account/:domain`. There were nine. Sources folded into Coverage and Day one
+folded into Case, and `/sources` and `/wired` are 301s handled by the router, not
+page modules. `page-sources.js` and `page-wired.js` are deleted; do not resurrect
+either to reach content that now lives inside another page.
 
 ## Ownership, absolutely
 
@@ -14,7 +21,7 @@ same file.
 | `public/static/floor.js` | the foundation author only | never edit |
 | `src/ui/page-*.js` | one author each | never edit another page |
 | `src/lib/i18n.js` | the router author only | **do not edit.** Export your copy from your own page module instead, see below |
-| `src/lib/*.js` (db, scoring, pipeline, sources, coverage) | nobody, this rebuild is presentation only | read to understand, do not change |
+| `src/lib/*.js` (db, scoring, pipeline, sources, coverage, edgar, companies_house, truth, accuracy, mutations) | nobody, a page rebuild is presentation only | read to understand, do not change |
 
 If your page needs something from `kit.js` that does not exist, do **not** define a
 local copy and do **not** edit the kit. Say so in your report. A second gauge
@@ -40,9 +47,9 @@ mean; only add what is genuinely new to your page.
 
 ```js
 export const meta = {
-  route: "/sources",        // path the router binds
-  nav:   "/sources",        // which nav item lights up
-  titleKey: "nav.sources",  // i18n key for <title>
+  route: "/coverage",        // path the router binds
+  nav:   "/coverage",        // which nav item lights up
+  titleKey: "nav.coverage",  // i18n key for <title>
 };
 
 /** Page-scoped CSS, inlined into <head> after the foundation stylesheet.
@@ -66,11 +73,12 @@ route in `src/index.js`.
 
 ## CSS scoping, which is what keeps pages from fighting
 
-The shell sets `<main class="p-sources">` from `meta.route`. Every rule in your
-`css()` starts with that class:
+The shell sets `<main class="p-coverage">` from the first path segment of
+`meta.route`, and `p-queue` for `/`. Every rule in your `css()` starts with that
+class:
 
 ```css
-.p-sources .registry { ... }        /* yes */
+.p-coverage .registry { ... }       /* yes */
 .registry { ... }                   /* no, leaks into every page */
 ```
 
@@ -189,9 +197,13 @@ unreachable Edit is not finished; that exact bug is why this rebuild exists.
 
 # Appendix: what `data` actually contains, per route
 
-Captured from the live API on 2026-08-08, not inferred from the code. Build against
+Captured from the live API on 2026-08-09, not inferred from the code. Build against
 these shapes. Where a field can be `null`, it is `null` in production right now, so
 render the absent case rather than assuming it away.
+
+What a page receives is what its entry in the `PAGES` registry returns, which is
+not always one bare API response. Coverage and Accuracy both compose several.
+Read the registry in `src/index.js` before assuming an endpoint's shape is yours.
 
 ## `/` queue → `data` is `GET /api/queue`
 
@@ -226,20 +238,29 @@ region_weight
 signals[] { id, kind, description, url, observed_at, weight }
 ```
 
-Real values to design against, not invented: DoorDash `txn_mid` 258,700,000 with
-confidence 0.96 (**above the gauge's current 100M ceiling, which is a bug the
-rebuild fixes**); Allegro abstained with `txn_*` all null, confidence 0, and a
-three-line `abstain_reason`; `observed_at` on signals is sometimes a full date
+Real values to design against, not invented: 38 accounts, 19 assessed, 5
+abstained. DoorDash `txn_mid` 258,700,000 with confidence 0.96, which the gauge
+now accommodates and the QA gate asserts it still does; Allegro abstained with
+`txn_*` all null, confidence 0, and a three-line `abstain_reason`; `observed_at`
+on signals is sometimes a full date
 (`2025-10-06`), sometimes a month (`2025-03`), sometimes a quarter (`2025-Q4`),
 sometimes a bare year (`2022`), and sometimes `null`. Handle all five.
 
 ## `/account/:domain` → `data` is `GET /api/account/:domain`
 
-`{ account, assessment, scored, evidence[], signals[], traces[] }`. Traces are the
-per-stage record (model, tokens, cost, latency, stop reason) and are the audit
-trail the trust argument rests on.
+`{ account, assessment, scored, evidence[], signals[], traces[], settings }`.
+Traces are the per-stage record (model, tokens, cost, latency, stop reason) and
+are the audit trail the trust argument rests on. `account.sec_cik` is the CIK when
+the merchant resolved in EDGAR and `null` when it did not, with
+`account.sec_checked_at` recording that the question was asked. A null CIK on a
+checked account is a fact about the merchant, so do not offer an action that can
+only fail on it.
 
-## `/coverage` (new) → `data` is `GET /api/coverage`
+Evidence rows arrive already classified: each carries `source_class { tier, label,
+weight, matched, note }`, computed at render time from the operator's rules, so
+editing a rule re-grades stored claims without a re-run.
+
+## `/coverage` → `GET /api/coverage`, plus the source registry
 
 ```
 generated_at, min_sample (5), note
@@ -251,37 +272,72 @@ measured { total_accounts, assessed, sample_too_small, estimated, abstained,
 ```
 
 `sample_too_small` is authoritative: when true the region renders hatched outline
-only and can never receive a fill, whatever its rate. Today APAC is 1 of 7 and
-LATAM and AMEA are 0, so the honest map is mostly dark. That is the argument, not a
-failure to hide.
+only and can never receive a fill, whatever its rate. LATAM and AMEA are still 0,
+so the honest map is mostly dark. That is the argument, not a failure to hide.
 
-## `/sources` → `data` is `GET /api/sources`
+The registry arrives on the same payload as `sourceRegistry`, because Coverage
+absorbed the Sources page:
 
 ```
-sources[10] { id, name, kind, status, cost, what, unlocks, limits, coverage{} }
-regions[5], connected (1), total (10), free_and_unwired (2)
-coverage_now[5]   { region, level, contributors[] }
-coverage_wired[5] { region, level, contributors[] }
-note
+sourceRegistry.sources[10] { id, name, kind, cost, what, unlocks, limits,
+                             coverage{}, status, holds_key, has_adapter,
+                             needs_secret }
+sourceRegistry { regions[5], connected (3), total (10), free_and_unwired,
+                 coverage_now[5], coverage_wired[5], note }
 ```
-Classification rules come separately from `GET /api/source-rules`.
 
-## `/evals` accuracy → `GET /api/evals` and `GET /api/gold`
+`status` is **derived**, never read off the literal in `RAW_SOURCES`: it is
+`connected` when the credential and an adapter both exist, `key_held` when only
+the credential does, `available` otherwise. Render `status`, not `cost`, to say
+whether something is wired. Classification rules still come separately from
+`GET /api/source-rules`.
 
-`evals` is `{ latest: null, items: [] }` today: **no eval has ever run**, so the
-empty state is the state this page ships in. `gold` is `{ rows[22], total: 22,
-verified: 0 }` where every row has `verified: 0` and `disclosed_value: null`. Design
-the empty and unverified cases as the primary case, because they are.
+## `/evals` accuracy → several payloads at once
 
-## `/backlog` → `GET /api/backlog`
+```
+evals   { latest { id, run_at, n, n_scored, in_band, order_correct,
+                   floor_correct, abstained }, items[], segments{} }
+gold    { rows[11], total, verified, archived }
+sources { [domain]: [{ url, host, title, field, primary, answers }] }  // unverified rows only
+sec     { [domain]: { cik, checked } }
+suggest { suggestions[], saturated, blind[] }
+cost_per_account
+```
+
+`segments` carries `by_derivation`, `by_region`, `by_magnitude` and
+`calibration`, each row `{ key, label, n, scored, abstained, sample_too_small,
+need, floor_correct, in_band }`. Where `sample_too_small` is true, `floor_correct`
+and `in_band` are `null` on purpose. Say what is needed (`need`), never print a
+rate small.
+
+A gold row now carries its provenance: `established_by` is `extraction` or
+`human`, with `verbatim`, `raw_value`, `raw_period`, `period` and `truth_flags`
+alongside. Flags are advisory and are shown, not swallowed; the commonest reads
+"the period came from the filing type, not from the quoted sentence".
+
+Current state, which is the state to design for: eleven gradable rows, six
+established, one eval run scoring four merchants. Eleven further seeded rows are
+archived and must never appear.
+
+## `/backlog` → `GET /api/backlog`, with archived cards included
 
 `{ areas[5], byArea{ SDR, Marketing, "Learning Ops", "Key Account Mgmt", Other },
-total: 5, live: 1 }`. Two areas are empty arrays.
+total, live, archived[] }`. The page loader passes `includeArchived: true` so an
+archived card can be restored from the interface, which means `byArea`, `total`
+and `live` all count archived cards on this route and the page has to exclude
+them itself. `GET /api/backlog` excludes them. Two callers, two answers, and the
+one that matters is the one your page asked for.
 
-## `/settings` → `GET /api/settings`
+## `/settings` → settings plus the cost context its consequence lines refer to
 
-Flat object, same keys as `queue.settings`. `acv_usd` is `""`.
+`{ settings, budget { spent, cap }, assessed, total_accounts, cost_per_account }`.
+`settings` is the flat object, same keys as `queue.settings`, and `acv_usd` is
+`""` until an operator sets it. `GET /api/settings` returns the flat object
+alone; the page gets the rest so a consequence line can quote a real number
+instead of a general claim.
 
-## `/model` impact and `/wired` day one
+## `/model` case
 
-Both consume the queue payload plus authored argument copy. No separate endpoint.
+Consumes the queue payload plus authored argument copy. No separate endpoint. It
+absorbed the old `/wired` day-one page, so the wired-state argument is a section
+here rather than a route, and `/wired` 301s to `/model#wired`.

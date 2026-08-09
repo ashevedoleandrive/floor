@@ -157,7 +157,11 @@ export async function queueRows(env) {
   const { results } = await env.DB.prepare(`
     SELECT a.id, a.domain, a.name, a.region, a.last_touched_at, a.owner,
            s.id AS assessment_id, s.run_at, s.status, s.txn_min, s.txn_mid, s.txn_max,
-           s.confidence, s.abstained, s.abstain_reason, s.method, s.cost_usd, s.latency_ms
+           s.confidence, s.abstained, s.abstain_reason, s.method, s.cost_usd, s.latency_ms,
+           -- suggestGold reads this to know whether a figure was read off a
+           -- disclosure or derived from dollar volume. It was never selected, so
+           -- that whole class of suggestion could never fire: a silent no-op.
+           s.derivation
     FROM accounts a
     LEFT JOIN assessments s ON s.id = (
       SELECT id FROM assessments

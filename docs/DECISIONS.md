@@ -280,13 +280,183 @@ Self-reported cleanup is not a check. Anything that would be embarrassing on a
 shared screen and looks completely normal in the interface needs an assertion
 somewhere that fails loudly.
 
+## D19 · Ground truth is extracted from filings, not typed by a human
+
+**Decision.** The answer key is established by reading the merchant's own filing.
+A narrow extractor transcribes one figure from one named document, the verbatim
+sentence is stored and shown, and code performs every conversion. Provenance is
+recorded as `extraction` or `human`, because the two are different kinds of
+evidence and the page says which it holds.
+
+**Why.** D9 shipped the gold set empty and made a human the only way to fill it.
+That was right when Floor had exactly one source, because any automated check
+would have been reading the same web through the same eyes. The human was
+standing in for a second source that had not been wired. EDGAR is that source: a
+regulator's own document store, reached by direct lookup rather than by search,
+so predictions and truth stop sharing a pipe.
+
+**What makes it trustworthy is not that a model did it.** It is that the sentence
+and the arithmetic are both on screen. A sceptic checks the figure by reading;
+a human quietly typing a number was never checkable at all.
+
+**Cost.** A new failure mode, the unit error, which is what D20 and the five
+defences in `src/lib/truth.js` exist for.
+
+**Reversal.** D9's rule that a row does not count until a human types the figure
+is retired. Its reason, that seeding from memory reproduces the failure the tool
+exists to prevent, is intact: nothing is established from memory, only from a
+named document.
+
+---
+
+## D20 · The model reports, code converts, and five defences sit in between
+
+**Decision.** The extractor reports the figure, its scale word and its period as
+separate fields and converts nothing. Code multiplies, and refuses in five ways.
+
+1. The claimed period is checked against the quoted sentence.
+2. The claimed scale word is checked against the quoted sentence, matched to the
+   figure being validated rather than to the first number in the line.
+3. A quote naming no period abstains, unless the document type establishes one,
+   as annual filed accounts do. That substitution is recorded as a flag.
+4. All arithmetic is deterministic.
+5. A disagreement with Floor's own estimate at almost exactly 3x, 4x or 12x is
+   flagged as a suspected period confusion.
+
+**Why.** "776 million Total Orders in Q3" stored as monthly is wrong by exactly
+3x, and the eval would then reward a badly wrong prediction and penalise the
+correct one while reporting nothing. A wrong answer key is worse than no answer
+key, because it converts an honest "unmeasured" into a confident lie.
+
+**Not theoretical.** The first live extraction read "970 million Total Orders"
+and reported 970. The scale check caught it.
+
+**Flagged, never rejected, on the fifth.** Discarding truth for disagreeing with
+the prediction is the circularity the whole design exists to avoid.
+
+---
+
+## D21 · A filer is identified by the domain it prints, not by its name
+
+**Decision.** Names shortlist. A candidate CIK is accepted once the filer's own
+newest filing prints the merchant's domain. Where no filing prints a domain, an
+exact legal name is accepted at lower confidence and the weaker basis is
+reported rather than hidden.
+
+**Why.** "allegro" prefixes ALLEGRO MICROSYSTEMS, a US semiconductor company, so
+a name rule returned its CIK for allegro.pl at 80% confidence and Floor would
+have stored a chip maker's 10-Q as ground truth for a Polish marketplace, with a
+verbatim quote and a source link making it look impeccable. Demanding an exact
+name instead lost Lululemon and Peloton. Names are wrong in both directions; a
+company states its own website on the cover of its filings.
+
+**Cost.** One extra fetch per candidate, and a lower-confidence branch that has
+to be labelled everywhere it appears.
+
+**Limit, stated because it is load-bearing.** Companies House has no domain field
+and filed accounts rarely print a website, so the UK resolver still matches on an
+exact name. The rule is applied where the data allows it, not everywhere.
+
+---
+
+## D22 · A PDF is a document, not a parsing problem
+
+**Decision.** Companies House accounts go to the model as a document block. No
+PDF parser, no build step.
+
+**Why.** Checked rather than assumed across four companies including Tesco and
+Dyson: the document API returns `application/pdf` and nothing else. EDGAR hands
+over HTML that a regex can reduce; Companies House hands over a document. A
+parser would mean a toolchain this product deliberately does not have.
+
+**Guard.** Documents are capped, and the smallest recent filing that fits is
+chosen rather than the newest, because a large PLC files a 9MB annual report
+while last year's is 6MB and carries the same headline figure. A document over
+the ceiling is a coverage fact and says so.
+
+**Cost.** The UK path yields revenue rather than order counts, so it establishes
+the dollar volume a size is derived from rather than a transaction count. That is
+the honest ceiling of the source and it is stated rather than papered over.
+
+---
+
+## D23 · Source status is derived from what is reachable
+
+**Decision.** A source's status is computed from two separate facts: whether the
+credential exists, and whether an adapter exists that reads it. Three states,
+`connected`, `key_held` and `available`.
+
+**Why.** Status was a constant typed into the registry, so adding the Companies
+House key changed nothing on screen and the page sat there calling a source
+unwired while its key was in the vault. Bryan: "isn't this shit supposed to be
+dynamic, or do you expect me to tell you every time I add a source?"
+
+**Why two facts and not one.** Holding a key with nothing to call it is not
+connection, and reporting it as connected would be the same overclaim in a new
+place. The coverage map and its rail read the derived registry, so wiring a
+source lights its regions without anyone editing a file.
+
+---
+
+## D24 · Six surfaces, and the retired routes still resolve
+
+**Decision.** Queue, Coverage, Accuracy, Case, Backlog, Settings. Sources folded
+into Coverage, Day one folded into Impact, which became Case. `/sources` and
+`/wired` return 301s into the pages that absorbed them.
+
+**Why.** Sources and Coverage answered one question, what this tool can see and
+how well, and the Coverage page argued in its own copy that coverage and
+measurability are one constraint rather than two. Two tabs contradicted the
+sentence on the screen. Impact and Day one were both arguments about value split
+across two tabs, which is why neither felt essential. Eight tabs for 38 accounts
+is homework logic: a page per capability so each one looks justified. A tool
+earns trust by being small and dense.
+
+**Kept separate on purpose.** Accuracy, because it is the whole trust argument.
+Backlog, because "what would you build next" is a question the room will ask.
+
+**Consequence.** Both merged pages are smaller than the two they replace, and the
+QA gate now asserts the redirects, because a link someone already shared has to
+keep landing.
+
+---
+
+## D25 · An abstain names its cause, not its consequence
+
+**Decision.** The abstain path is unchanged, and the account of it is not. A
+figure the critic will not support still cannot carry an estimate. But "no
+surviving claim measures purchase volume" is now reserved for the case where
+research genuinely found nothing, and a separate sentence covers the case where a
+figure was found and its attribution could not be confirmed. A critic that ran
+out of tokens says so.
+
+**Why.** The two situations wore the same sentence and demand opposite responses.
+The first sends an operator hunting for better sources. The second needs a re-run
+or a human glance, and Chewy spent two runs looking like the first when it was
+the second, with a direct SEC net-sales quote sitting in its evidence table.
+
+**Cost.** None to the guarantee. The gate is deliberately untouched; only the
+explanation changed.
+
+---
+
 ## Open, and honestly so
 
-- **Coverage, not accuracy, is the constraint.** Public filers are well served;
-  private companies abstain. The fix is sources (SEC EDGAR and EU registries are
-  free), not prompt tuning.
+- **Coverage, not accuracy, is the constraint.** Public filers are well served,
+  and a private UK company is now reachable through its filed accounts.
+  Everywhere else, private companies abstain. The remaining free fix is the rest
+  of the EU registries, not prompt tuning.
+- **The UK resolver is the weakest link in the answer key.** It matches on an
+  exact name because Companies House has no domain to match on, so a namesake or
+  a local subsidiary can be reached instead of the merchant. Every other source
+  is settled by the domain.
+- **The eval is four rows.** Enough to prove the loop closes, not enough to
+  publish a rate, which is why every segment below the sample floor withholds one
+  rather than printing it small.
 - **Floor scores a universe, it does not build one.** Discovering which merchants
   belong on the list is a different product, and where Apollo and Sales Navigator
   actually belong.
 - **Cool-down reads an uploaded date.** CRM activity history would make it true.
-- **Queue sorting is unverified** until enough accounts carry real data to sort.
+- **Queue sorting is exercised but ungraded.** Nineteen assessed accounts sort
+  the way the rules say they should. Whether that order is the *right* order is a
+  question only closed-won outcomes answer, which is the Salesforce loop.

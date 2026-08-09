@@ -749,7 +749,22 @@ async function establishTruth(env, domain) {
     // Only used to flag a disagreement whose ratio looks like a unit error.
     predictedMonthly: prior?.abstained ? null : prior?.txn_mid ?? null,
   });
-  if (!r.ok && env.COMPANIES_HOUSE_KEY) {
+  // Fall through to the UK registry ONLY when EDGAR found no company at all.
+  //
+  // This guard exists because its absence corrupted two answer keys. Chewy and
+  // Etsy are both SEC filers and both resolve to a CIK. Their EDGAR extraction
+  // failed to find a figure, the old condition treated that as "not a US filer",
+  // and Companies House matched a namesake British limited company. Chewy was
+  // established at 5,229 a month from a small firm's turnover line; Etsy at
+  // 985,927 from £11.8M. Etsy did $12.6 billion in GMS.
+  //
+  // A wrong answer key is the worst defect available here: it silently grades a
+  // correct prediction as a miss, on the one page whose whole job is honesty.
+  // So the fallback now requires that EDGAR failed at the SOURCE stage, meaning
+  // no company was found, and that no CIK is on file for the merchant. If the
+  // SEC knows this company, Companies House is the wrong book.
+  const edgarFoundNoCompany = r.stage === "source" && !acct?.sec_cik;
+  if (!r.ok && edgarFoundNoCompany && env.COMPANIES_HOUSE_KEY) {
     const uk = await extractTruthUK(env, budget, {
       domain, name: acct?.name || row.name, metric: row.disclosed_metric, settings,
     });

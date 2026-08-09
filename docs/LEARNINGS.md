@@ -400,6 +400,152 @@ one hatched below the sample floor, two dark, only appears against real data.
 **Transferable:** a page that renders is not a page that works. Test against the
 data the thing will actually be seen with, especially the rows that are ugly.
 
+---
+
+## 23. A name is not an identity
+
+The EDGAR resolver matched company names. "allegro" prefixes "ALLEGRO
+MICROSYSTEMS, INC.", a US semiconductor company, so allegro.pl resolved to CIK
+0000866291 at 80% confidence. Clicking Establish would have read a chip maker's
+10-Q and stored it as ground truth for a Polish marketplace, complete with a
+verbatim quote and a source link making it look impeccable.
+
+My own comment in that file warned that a wrong CIK silently attributes one
+company's filings to another. The code did it anyway.
+
+The obvious correction, demand an exact name, immediately lost Lululemon and
+Peloton, whose legal names carry extra words. Names are wrong in both directions.
+What settles it is the domain, because a company prints its own website on the
+cover of its filings: DoorDash's 10-Q contains "doordash.com", Allegro
+MicroSystems' contains "allegromicro.com" and never "allegro.pl". Names now only
+shortlist, and a candidate is accepted once its own filing says the domain out
+loud.
+
+**Transferable:** match on the identifier the subject publishes about itself, not
+on the label you use for it. And when a fix in one direction breaks the other
+direction, the field you are matching on is the wrong field.
+
+---
+
+## 24. A check that ran out of room looked like a check that doubted everything
+
+Chewy abstained for "no surviving claim measures purchase or transaction volume"
+while its evidence carried a direct SEC quote of $3,357.2 million net sales for
+the quarter, 21.5 million active customers, and net sales per active customer.
+Eleven claims, every one marked uncertain, not one supported.
+
+The evidence was never the problem. The critic hit its token ceiling: stop reason
+`max_tokens`, output exactly 8000. It never finished issuing verdicts, and
+`finalise` defaults a claim with no verdict to uncertain. That default is right
+when the critic considered a claim and hedged. It is wrong when the critic never
+reached the claim, because then every verdict goes missing at once, everything
+reads as doubted, and the account abstains for lack of evidence with its filing
+sitting in the table.
+
+Three fixes. The budget went to 16,000, since thinking and output share it.
+Truncation is now detected and carried out of the stage rather than swallowed.
+And the abstain now distinguishes "nothing measures volume" from "a figure was
+found but its attribution could not be confirmed", because the first sends an
+operator hunting for better sources and the second needs a re-run. Chewy now
+returns 13.6M txn/mo at 82% confidence and sits in the work band.
+
+One run in twenty-four was affected, so the incidence was not systemic. The
+failure mode is.
+
+**Transferable:** a missing answer is not a negative answer. Any default for an
+absent value has to be chosen with the reasons it could go absent in mind, and
+a run that was cut off has to be able to say so.
+
+---
+
+## 25. A proxy came apart at exactly the row it mattered on
+
+Zalando sat under "needs an assessment first" on the accuracy page while being
+assessed. The predicate deciding whether a row was gradable tested for stored
+source links, using "we found documents" as a proxy for "we have a prediction".
+
+Those two come apart in one case, and it is the case that matters: an abstain
+means the critic dropped every claim, so there are no surviving evidence URLs, so
+an assessed merchant reported as unassessed. The predicate now asks whether a
+live assessment exists, and nothing else.
+
+Two copies of it existed, server and client. Fixing the server alone meant the
+server put Zalando in the right place and the client moved it back to the wrong
+one, which is precisely the defect the QA gate was built for: two files rendering
+the same thing from different logic, and nothing errors.
+
+**Transferable:** a proxy is a bet that two things never come apart. Write down
+where they would, and check that row first.
+
+---
+
+## 26. The domain rule was applied to one resolver and not the other
+
+Entry 23 fixed EDGAR. Companies House was wired later and matches on an exact
+name after stripping legal suffixes, because Companies House has no domain field
+and filed accounts rarely print a website. That constraint is real and it is
+documented in the file. What was not thought through is where the fallback fires:
+truth extraction tries EDGAR first and falls through to the UK registry
+**precisely when EDGAR failed**, which is also precisely when the merchant is
+most likely to be something other than a UK company.
+
+The result is in production. chewy.com is established at 5,229 orders a month
+from "Turnover 62,751" in the accounts of a UK company for the period ending
+2012, and etsy.com at 985,927 a month from a £11.8M turnover line. Both are real
+filings, correctly quoted, correctly converted, and attributed to the wrong
+business. Every defence in `truth.js` did its job; none of them is a check on
+*whose* document this is.
+
+Cost so far is contained only by timing: the eval ran before those two rows were
+written, so the published numbers do not include them. Re-running it today would
+grade Floor against a namesake's accounts and the accuracy claim would collapse
+for reasons that have nothing to do with the estimator.
+
+**Transferable:** a rule that lives in one adapter is not a rule. When a class of
+error is fixed, walk every path that can produce it, especially the fallback that
+only runs when the fixed path gave up.
+
+---
+
+## 27. A child record scoped to the wrong parent cannot be undone
+
+Assessments soft-delete: remove a bad run and the previous one takes over,
+restore it and it comes back. Evidence and traces are scoped to the assessment,
+so both follow correctly.
+
+Signals are scoped to the account, and saving a run deletes the previous run's
+signals before inserting its own. Removing that run does not bring the old ones
+back. DoorDash currently displays four timing signals belonging to an assessment
+that was deleted this morning, and timing is 15% of the score.
+
+This is the D17 rule failing in the one place nobody checked: the action is
+reversible in the interface, the undo is right there, and it silently restores
+less than it removed.
+
+**Transferable:** an undo is only as good as the scoping of everything the
+original write touched. Ask what else that write deleted, and who owns it.
+
+---
+
+## 28. Handing the model the answer made it stop looking for the question
+
+Wiring EDGAR into research was a clear win: the pipeline reads the filing instead
+of searching for commentary about it, and the five searches are freed for timing
+signals. The prompt says exactly that.
+
+Chewy then spent all five searches on financial facts and returned no dated
+events at all, leaving timing at 0.00 where an earlier run had found its Canada
+launch and the Modern Animal acquisition. Not systematic, since Roblox picked up
+three dated signals after EDGAR was wired. But the prompt lists dated events
+last, and a handed-over filing can satisfy everything above them before the model
+reaches the part it was supposed to spend the budget on.
+
+**Transferable:** when you remove work from a step, check what it does with the
+freed capacity. An instruction ordering is a priority list only while the earlier
+items are still expensive.
+
+---
+
 ## Standing rules that came out of this
 
 1. Print the raw response structure before trusting any accessor over it.
@@ -424,3 +570,9 @@ data the thing will actually be seen with, especially the rows that are ugly.
 19. A delegated report is a claim. Verify the final state yourself.
 20. Budget for someone to click it. Static checks find none of the worst bugs.
 21. Test against the data it will be seen with, especially the ugly rows.
+22. Match on the identifier the subject publishes about itself, not on its name.
+23. A missing answer is not a negative answer. Choose the default for an absent
+    value knowing why it could be absent.
+24. A rule fixed in one adapter is not fixed. Walk the fallback paths too.
+25. A proxy is a bet that two things never come apart. Check that row first.
+26. An undo restores only what the original write was scoped to. Check the rest.

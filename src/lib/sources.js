@@ -203,7 +203,10 @@ export function sourceSummary(env) {
     free_and_unwired: SOURCES.filter((s) => s.status === "available" && s.cost === "free").length,
     coverage_now: coverageByRegion(true, env),
     coverage_wired: coverageByRegion(false, env),
-    note: "Two sources are connected: open web search, and the SEC's own filing store. The rest are the upgrade path, and the trust layer above them does not change when they are added.",
+    // Derived, because a hand-typed count is exactly what went stale last time.
+    note: `${connected.length === 1 ? "One source is" : `${connected.length} sources are`} connected: ${
+      connected.map((c) => c.name).join(", ")
+    }. The rest are the upgrade path, and the trust layer above them does not change when they are added.`,
   };
 }
 

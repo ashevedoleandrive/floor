@@ -12,7 +12,7 @@ What was built to close it:
 | Account edit and delete | Edit name, region, owner and last touched, inline. Archive and restore. |
 | `last_touched_at` uneditable | Editable on the queue and the account page. It feeds cool-down scoring. |
 | Assessment re-run and delete | Remove a run and the previous one takes over. Restore it. Full history per account. |
-| Gold figure permanent | Correct it, un-verify it, add a candidate, archive one. Verifying is refused without both a figure and its source URL. |
+| Gold figure permanent | Correct it, un-verify it, add a candidate, archive one, or establish it from the merchant's own filing. Verifying is refused without both a figure and its source URL. |
 | Backlog card frozen | Move between idea, building and live as a one-click action. Edit and archive. |
 | Rule edit and reorder | Both, in the interface. Order decides which rule wins. |
 | No undo anywhere | Nothing hard-deletes. Archiving stamps a timestamp, un-archiving clears it, and destructive actions confirm and offer undo. |
@@ -25,6 +25,15 @@ queries that kept counting archived rows toward their totals, in the backlog and
 the gold set. Two page authors found them independently. That is what a shared
 defect looks like when nobody owns the file it lives in, and it is the reason the
 rule below is written the way it is.
+
+**One known exception, open rather than quietly closed.** Removing an assessment
+restores the previous one, and evidence and traces come back with it because both
+are scoped to the assessment. Signals are scoped to the account, and saving a run
+deletes the previous run's signals before writing its own, so restoring a run
+does not restore them. The undo is present, reachable and honest about what it
+does, and it still returns less than it took. Recorded here rather than marked
+done, because an audit that only lists what was fixed is the same self-report
+this document exists to distrust. See `LEARNINGS.md` §27.
 
 ---
 
