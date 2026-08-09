@@ -45,6 +45,15 @@ import {
    gaps (add / edit / un-verify / archive / restore) and their copy. */
 
 export const keys = {
+  "evals.progressSplit": {
+    en: "{a} of {b} verified, {w} more waiting on an assessment",
+    es: "{a} de {b} verificadas, {w} más esperan un análisis",
+  },
+  "evals.waitingNote": {
+    en: "{w} candidates have no prediction yet, so there is nothing to compare them against. Assess them from the queue and they become checkable.",
+    es: "{w} candidatos aún no tienen estimación, así que no hay con qué compararlos. Analízalos desde la cola y pasan a ser verificables.",
+  },
+
   "evals.nextLabel": { en: "What to check next", es: "Qué verificar ahora" },
   "evals.nextTitle": {
     en: "Three that would tell you something new",
@@ -258,6 +267,19 @@ export async function render(env, data, ctx) {
   const archivedRows = rows.filter((g) => g.archived_at);
   const totalActive = activeRows.length;
   const verifiedActive = activeRows.filter((g) => g.verified).length;
+
+  // How many rows can actually be verified right now.
+  //
+  // The gold set was seeded as a list of merchants known to disclose volume
+  // publicly, chosen for that property alone and independently of what Floor
+  // had assessed. So a row can sit here with no prediction to compare against,
+  // which means it cannot be verified at any effort today.
+  //
+  // Counting those in the denominator made the header read "0 of 22" when only
+  // a fraction were reachable. On the one page whose whole job is honest
+  // numbers, a denominator that includes unavailable work is the wrong number.
+  const verifiable = activeRows.filter((g) => !g.verified && (sources[g.domain] || []).length > 0).length;
+  const waiting = activeRows.filter((g) => !g.verified && !(sources[g.domain] || []).length).length;
   // Archived rows never disappear (§5.4 undo doctrine); they stay in the
   // same table, dimmed, sorted after the active ones.
   const sortedRows = [...activeRows, ...archivedRows];
@@ -300,7 +322,8 @@ export async function render(env, data, ctx) {
       <p class="t-body ink-3" style="margin-top:16px;max-width:64ch">${esc(t("eval.foot"))}</p>`,
   });
 
-  const progPct = totalActive ? Math.round((verifiedActive / totalActive) * 100) : 0;
+  const reachable = verifiedActive + verifiable;
+  const progPct = reachable ? Math.round((verifiedActive / reachable) * 100) : 0;
   const goldTable = table({
     cols: [
       { key: "merchant", label: t("eval.merchant") },
@@ -333,10 +356,12 @@ export async function render(env, data, ctx) {
     actions: btn(t("evals.addCandidate"), { kind: "quiet", action: "gold:openAdd" }),
     body: `<div class="ev-prog-row">
         <div class="prog" id="ev-gold-prog"><i style="width:${progPct}%"></i></div>
-        <span class="mono ink-3 ev-prog-n" id="ev-gold-prog-n">${esc(t("gold.progress", { a: verifiedActive, b: totalActive }))}</span>
+        <span class="mono ink-3 ev-prog-n" id="ev-gold-prog-n">${esc(t("gold.progress", { a: verifiedActive, b: verifiedActive + verifiable }))}</span>
       </div>
       ${goldTable}
-      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: totalActive }))}</p>`,
+      <p class="t-body ink-3" id="ev-gold-foot" style="margin-top:16px;max-width:64ch">${esc(t("gold.foot", { n: totalActive }))}${
+        waiting ? " " + esc(t("evals.waitingNote", { w: waiting })) : ""
+      }</p>`,
   });
 
   const verifyDlg = dialog({
@@ -426,7 +451,11 @@ export async function render(env, data, ctx) {
     <div class="whead">
       <div class="whead-t">
         <h1 class="t-title">${esc(t("nav.accuracy"))}</h1>
-        <span class="whead-meta" id="ev-verified-meta">${esc(t("gold.progress", { a: verifiedActive, b: totalActive }))}</span>
+        <span class="whead-meta" id="ev-verified-meta">${esc(
+          waiting
+            ? t("evals.progressSplit", { a: verifiedActive, b: verifiedActive + verifiable, w: waiting })
+            : t("gold.progress", { a: verifiedActive, b: totalActive })
+        )}</span>
       </div>
     </div>
     <div class="ev-meter" id="ev-meter">${meter}</div>
