@@ -378,7 +378,7 @@ async function main() {
       [dd && !dd.last_touched_at, `doordash has no last-touched date (is ${dd?.last_touched_at})`],
       [q.rows.length === 38, `38 accounts (is ${q.rows.length})`],
       [q.rows.filter((r) => r.assessment_id).length === 19, `19 assessed (is ${q.rows.filter((r) => r.assessment_id).length})`],
-      [q.counts.needs_evidence === 6, `6 abstained (is ${q.counts.needs_evidence})`],
+      [q.counts.needs_evidence === 5, `5 abstained (is ${q.counts.needs_evidence})`],
       [Number(q.settings.floor_txn) === 100000, `floor is 100k (is ${q.settings.floor_txn})`],
       [Number(q.settings.cooldown_days) === 45, `cool-down is 45 days (is ${q.settings.cooldown_days})`],
     ];

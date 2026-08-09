@@ -457,7 +457,25 @@ export function finalise({ extractJson, criticJson, allTraces, startedAt, critic
   if (criticTruncated && !verdicts.size)
     reasons.push("the adversarial check did not finish, so no claim was judged and none can be trusted yet. Re-run to get a verdict");
   if (est.abstain) reasons.push(est.abstain_reason || "extractor abstained");
-  if (!hasVolumeEvidence) reasons.push("no surviving claim measures purchase or transaction volume");
+  if (!hasVolumeEvidence) {
+    // Two very different situations wore the same sentence.
+    //
+    // "Nothing measures volume" sends an operator looking for better sources.
+    // That is right when the research genuinely found none, and actively
+    // misleading when a 10-Q net-sales figure is sitting in the evidence table
+    // and the critic simply could not confirm its attribution. The second case
+    // is a re-run or a human glance, not a sourcing problem, and Chewy spent
+    // two runs looking like the first when it was the second.
+    //
+    // The gate itself is deliberately unchanged: a figure the critic would not
+    // support does not become an estimate. Only the account of why changes.
+    const loose = surviving.filter(
+      (c) => ["txn_volume", "gmv", "orders", "revenue"].includes(c.field) && c.verdict === "uncertain"
+    );
+    reasons.push(loose.length
+      ? `${loose.length} volume figure${loose.length > 1 ? "s were" : " was"} found but the critic could not confirm ${loose.length > 1 ? "their" : "its"} attribution, so none can carry an estimate yet`
+      : "no surviving claim measures purchase or transaction volume");
+  }
   if (!est.abstain && (est.txn_mid == null || est.txn_mid <= 0)) reasons.push("no usable volume figure");
   // A range spanning more than two orders of magnitude is only fatal for a
   // DIRECT count, where it means the underlying figures disagree wildly. A
