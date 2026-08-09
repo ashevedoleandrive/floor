@@ -76,12 +76,12 @@ export const keys = {
   "w.sysLabel": { en: "System by system", es: "Sistema por sistema" },
   "w.honestLabel": { en: "Scope and limits", es: "Alcance y límites" },
   "w.regs.name": {
-    en: "SEC EDGAR & the EU statutory registries",
-    es: "SEC EDGAR y los registros estatutarios de la UE",
+    en: "SEC EDGAR, UK Companies House & the EU statutory registries",
+    es: "SEC EDGAR, el registro mercantil británico y los registros estatutarios de la UE",
   },
   "w.regs.now": {
-    en: "SEC EDGAR is connected: US filers resolve from a filed figure before any search runs. The EU registries are not.",
-    es: "SEC EDGAR está conectado: los emisores de EE. UU. se resuelven con una cifra presentada antes de cualquier búsqueda. Los registros de la UE no.",
+    en: "Two are connected. SEC EDGAR resolves US filers from a filed figure before any search runs. Companies House reads UK filed accounts, published only as PDF, and established ASOS, a merchant no US regulator has heard of. The EU registries are not wired.",
+    es: "Dos están conectados. SEC EDGAR resuelve a los emisores de EE. UU. con una cifra presentada antes de cualquier búsqueda. Companies House lee las cuentas presentadas en el Reino Unido, publicadas solo en PDF, y estableció ASOS, un comercio que ningún regulador de EE. UU. conoce. Los registros de la UE no están conectados.",
   },
   "w.regs.later": {
     en: "In Europe the EU Accounting Directive puts filed accounts behind a public registry per country (Germany's Bundesanzeiger, the Dutch Chamber of Commerce, France's Commercial Court): the single biggest coverage gain available in this system, for free. Neither reaches a private US company or fills LATAM, APAC or AMEA.",

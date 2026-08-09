@@ -257,9 +257,20 @@ export const keys = {
     en: "Truth is quoted verbatim from the filing and converted to a monthly rate in code.",
     es: "La verdad se cita textual del informe y se convierte a tasa mensual en código.",
   },
+  "cvg.role.companies_house.assess": {
+    en: "Not used during assessment. Filed accounts state revenue, not order counts, so they answer the truth question rather than the estimate.",
+    es: "No se usa durante el análisis. Las cuentas presentadas indican ingresos, no conteos de pedidos, así que responden a la verdad y no a la estimación.",
+  },
+  "cvg.role.companies_house.accuracy": {
+    en: "Reads UK filed accounts, which are published as PDF, and quotes the figure verbatim. This is what establishes truth for a merchant no US regulator has heard of, ASOS being the first.",
+    es: "Lee las cuentas presentadas en el Reino Unido, publicadas en PDF, y cita la cifra textual. Es lo que establece la verdad de un comercio que ningún regulador de EE. UU. conoce, ASOS fue el primero.",
+  },
   "cvg.roleNone": {
-    en: "No role written yet.",
-    es: "Todavía sin rol escrito.",
+    // Not "no role written yet", which reads as an unfinished note to the
+    // author. An unwired source has no role because nothing calls it, and that
+    // is a finished thought.
+    en: "Nothing calls it yet.",
+    es: "Todavía nada lo consulta.",
   },
 
   /* ---------- classification rules ---------- */
