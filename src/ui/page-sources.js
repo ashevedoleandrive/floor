@@ -159,7 +159,7 @@ function registryExpansion(source, t) {
   return `<div class="src-exp">
     <div><span class="t-label ink-3">${esc(t("src.unlocks"))}</span><p class="t-body">${esc(source.unlocks)}</p></div>
     <div><span class="t-label ink-3">${esc(t("src.limits"))}</span><p class="t-body">${esc(source.limits)}</p></div>
-    <div class="src-exp-cov"><span class="t-label ink-3">${esc(t("src.covByRegion"))}</span>
+    <div><span class="t-label ink-3">${esc(t("src.covByRegion"))}</span>
       <div class="src-exp-grid">${rows}</div>
     </div>
   </div>`;

@@ -262,11 +262,11 @@ const SIBERIA =
 /* Label anchors sit on ocean so the print stays legible over any fill,
    in both modes. West to east order drives the crossfade stagger. */
 const LABELS = {
-  NORTHAMERICA: { x: 52, y: 150 },
+  NORTHAMERICA: { x: 40, y: 162 },
   LATAM: { x: 398, y: 306 },
-  EUROPE: { x: 330, y: 80 },
+  EUROPE: { x: 346, y: 104 },
   AMEA: { x: 632, y: 236 },
-  APAC: { x: 856, y: 170 },
+  APAC: { x: 846, y: 170 },
 };
 const ORDER = ["NORTHAMERICA", "LATAM", "EUROPE", "AMEA", "APAC"];
 
@@ -326,10 +326,15 @@ function costWord(T, cost) {
   return s === k ? String(cost || "") : s;
 }
 
-function fmtPct(n) {
+function fmtRate(n) {
   if (n == null) return null;
   const v = Number(n);
-  return `${Number.isInteger(v) ? v : v.toFixed(1)}%`;
+  return String(Number.isInteger(v) ? v : v.toFixed(1));
+}
+
+function fmtPct(n) {
+  const r = fmtRate(n);
+  return r == null ? null : `${r}%`;
 }
 
 function fmtConf(n) {
@@ -348,7 +353,7 @@ function labelBlock(region, r, T, wiredLevel, owners) {
     : T("cvg.lblAssessed", { a: m.assessed, t: m.total_accounts });
   const line3t = m.sample_too_small
     ? T("cvg.lblFloor", { min: r.minSample })
-    : T("cvg.lblRate", { rate: fmtPct(m.estimate_rate_pct) ?? "" });
+    : T("cvg.lblRate", { rate: fmtRate(m.estimate_rate_pct) ?? "" });
   const line3w = T("cvg.lblProjected", { level: T(`cov.${wiredLevel}`) });
 
   const terr = (owners || []).slice(0, 3).map((o, i) =>
@@ -412,19 +417,19 @@ function fieldSvg(data, T, wired, ownersMap, outlineOnly) {
       <line x1="0" y1="0" x2="0" y2="7" stroke="#2A2E3A" stroke-width="1.4"/>
     </pattern>
     <pattern id="cv-pj3" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-      <rect width="6" height="6" fill="rgba(139,147,184,.66)"/>
-      <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(211,217,238,.30)" stroke-width="1"/>
+      <rect width="6" height="6" fill="rgba(139,147,184,.88)"/>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(15,17,22,.28)" stroke-width="1"/>
     </pattern>
     <pattern id="cv-pj2" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-      <rect width="6" height="6" fill="rgba(139,147,184,.36)"/>
-      <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(211,217,238,.20)" stroke-width="1"/>
+      <rect width="6" height="6" fill="rgba(139,147,184,.48)"/>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(15,17,22,.22)" stroke-width="1"/>
     </pattern>
     <pattern id="cv-pj1" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-      <rect width="6" height="6" fill="rgba(139,147,184,.16)"/>
+      <rect width="6" height="6" fill="rgba(139,147,184,.22)"/>
       <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(211,217,238,.12)" stroke-width="1"/>
     </pattern>
     <pattern id="cv-pj0" width="6" height="6" patternUnits="userSpaceOnUse">
-      <rect width="6" height="6" fill="rgba(139,147,184,.05)"/>
+      <rect width="6" height="6" fill="rgba(139,147,184,.06)"/>
     </pattern>
   </defs>`;
 
@@ -733,19 +738,28 @@ export function css() {
    everything else dims 20 percent while one region is selected */
 .p-coverage .hit { fill: none; stroke: transparent; stroke-width: 1; pointer-events: all; cursor: pointer; }
 .p-coverage .hit:hover { stroke: rgba(239,231,207,.4); }
+.p-coverage .hit:focus { outline: none; }
 .p-coverage .hit:focus-visible { outline: none; stroke: var(--lit); stroke-width: 1.2; }
 .p-coverage .rgn.sel .hit { stroke: var(--lit); stroke-width: 1.2; }
 .p-coverage .rgn { transition: opacity .18s var(--ease); }
 .p-coverage .cov-map.has-sel .rgn:not(.sel) { opacity: .8; }
 .p-coverage .cm-lbl { cursor: pointer; }
 
-/* printed label blocks: the anti-area device. Always on the field. */
+/* printed label blocks: the anti-area device. Always on the field.
+   The stroke halo keeps the print legible over a lit fill; over the
+   dark ocean it disappears into the ground. */
 .p-coverage .cm-name {
   font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase;
-  fill: #C7CCDA;
+  fill: #C7CCDA; paint-order: stroke; stroke: #0F1116; stroke-width: 3px; stroke-linejoin: round;
 }
-.p-coverage .cm-n { font: 400 10px var(--mono); fill: #8B90A3; }
-.p-coverage .cm-l3 { font: 400 10px var(--mono); fill: #7E8598; transition: opacity .24s var(--ease); }
+.p-coverage .cm-n {
+  font: 400 10px var(--mono); fill: #8B90A3;
+  paint-order: stroke; stroke: #0F1116; stroke-width: 3px; stroke-linejoin: round;
+}
+.p-coverage .cm-l3 {
+  font: 400 10px var(--mono); fill: #7E8598; transition: opacity .24s var(--ease);
+  paint-order: stroke; stroke: #0F1116; stroke-width: 3px; stroke-linejoin: round;
+}
 .p-coverage .l3w { opacity: 0; }
 .p-coverage .cov-field.mode-wired .l3w { opacity: 1; }
 .p-coverage .cov-field.mode-wired .l3t { opacity: 0; }
@@ -753,7 +767,10 @@ export function css() {
 /* territory overlay: static show/hide, no motion */
 .p-coverage .terr { visibility: hidden; }
 .p-coverage .cov-field.terr-on .terr { visibility: visible; }
-.p-coverage .cm-terr { font: 400 9px var(--mono); fill: #6E7488; }
+.p-coverage .cm-terr {
+  font: 400 9px var(--mono); fill: #6E7488;
+  paint-order: stroke; stroke: #0F1116; stroke-width: 3px; stroke-linejoin: round;
+}
 .p-coverage .cm-border { fill: none; stroke: #454B5E; stroke-width: 1; stroke-dasharray: 1 3; }
 
 .p-coverage .cov-legend {

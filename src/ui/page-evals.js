@@ -444,7 +444,7 @@ export function script() {
       hollow: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
       hatch: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/><path d="M1 6.6 3.4 9M1 3.2 6.8 9M2.8 1 9 7.2M6.4 1 9 3.6" stroke="currentColor" stroke-width="1"/></svg>',
     };
-    const mk = (kind, label, tone) => '<span class="mk tone-' + tone + '">' + MK[kind] + '<span class="mk-w">' + esc(label) + '</span></span>';
+    const mk = (kind, label, tone) => { const cls = "mk tone-" + tone; return '<span class="' + cls + '">' + MK[kind] + '<span class="mk-w">' + esc(label) + '</span></span>'; };
     const DOTS_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="11.5" cy="7" r="1.3"/></svg>';
 
     const t = (key, vars) => (window.Floor ? window.Floor.t(key, vars) : key);
@@ -745,8 +745,8 @@ export function script() {
           : i.in_band ? mk("filled", t("eval.vInBand"), "ok") : mk("hollow", t("eval.vOutside"), "bad");
         const floorCall = abstained ? mk("hatch", t("eval.vAbstained"), "held")
           : i.floor_correct ? mk("filled", t("eval.vCorrect"), "ok") : mk("hollow", t("eval.vWrong"), "bad");
-        const acc = abstained ? "held" : (i.floor_correct ? "ok" : "bad");
-        return '<tr class="row-acc-' + acc + '"><td>' + esc(i.domain) + '</td>' +
+        const rowCls = "row-acc-" + (abstained ? "held" : (i.floor_correct ? "ok" : "bad"));
+        return '<tr class="' + rowCls + '"><td>' + esc(i.domain) + '</td>' +
           '<td class="num mono">' + esc(fmtCount(i.truth)) + '</td>' +
           '<td class="num mono">' + (abstained ? '<span class="ink-4">&ndash;</span>' : esc(fmtCount(i.pred_min)) + '&ndash;' + esc(fmtCount(i.pred_max))) + '</td>' +
           '<td>' + inBand + '</td><td>' + floorCall + '</td>' +

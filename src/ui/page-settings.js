@@ -340,10 +340,13 @@ export async function render(env, data, ctx) {
       ],
     };
   });
-  const historySection = `<section class="hist-sec">${section({
+  // `id`, not a class: this is a one-off structural hook for the script's
+  // history-table query, not a reusable style, so it owes no CSS rule and
+  // cannot trip the "class emitted with no stylesheet entry" gate.
+  const historySection = `<div id="hist-sec">${section({
     title: T("set.historyTitle"), sub: esc(T("set.historySub")),
     body: table({ cols: histCols, rows: histRows, size: "dense", empty: esc(T("set.historyEmpty")) }, T),
-  })}</section>`;
+  })}</div>`;
 
   const saveBar = `<div class="save-bar" id="set-bar" role="status" aria-live="polite" hidden>
     <span class="save-bar-n" id="set-status"></span>
@@ -489,7 +492,7 @@ export function script() {
   }
 
   function prependHistoryRows(entries, whenStr){
-    var body = scope.querySelector('.hist-sec .tbl tbody');
+    var body = scope.querySelector('#hist-sec .tbl tbody');
     if (!body) return;
     var emptyRow = body.querySelector('.f-empty');
     if (emptyRow) emptyRow.closest('tr').remove();

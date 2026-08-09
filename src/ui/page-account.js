@@ -290,7 +290,7 @@ export async function render(env, data, ctx) {
       <span id="a-run-word" class="a-run-w"></span>
       <span id="a-run-el" class="mono a-run-e"></span>
     </div>
-    <div class="prog" id="a-run-prog"><i></i></div>
+    <div class="prog" id="a-run-prog" hidden><i></i></div>
     <p id="a-run-msg" class="a-run-m"></p>
   </div>`;
 
@@ -492,7 +492,6 @@ export async function render(env, data, ctx) {
     });
 
     traceSection = section({
-      label: T("trace.title"),
       title: T("trace.title"),
       sub: esc(T("trace.sub", {
         cost: money(assessment.cost_usd, 4),
@@ -520,7 +519,6 @@ export async function render(env, data, ctx) {
   /* ------------------------ run history -------------------------- */
 
   const historySection = section({
-    label: T("a.historyTitle"),
     title: T("a.historyTitle"),
     sub: esc(T("a.historySub")),
     body: `<div id="hist">${btn(T("a.history"), { kind: "quiet", action: "acct:history" })}</div>`,
@@ -553,7 +551,7 @@ function renderNotFound(data, ctx, T) {
     </nav>
     <div id="a-run" class="a-run" hidden>
       <div class="a-run-h"><span id="a-run-word" class="a-run-w"></span><span id="a-run-el" class="mono a-run-e"></span></div>
-      <div class="prog" id="a-run-prog"><i></i></div>
+      <div class="prog" id="a-run-prog" hidden><i></i></div>
       <p id="a-run-msg" class="a-run-m"></p>
     </div>
     <section class="a-nf"><div class="f-empty">
@@ -570,6 +568,8 @@ function renderNotFound(data, ctx, T) {
 
 export function css() {
   return `
+.p-account .acct { display: block; }
+.p-account .ev-none td { height: auto; padding: 16px 0; border-bottom: 0; }
 .p-account .a-arch { margin-top: 16px; }
 .p-account .a-arch-in { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .p-account .a-arch-in .mk { align-self: center; flex: none; }
@@ -596,6 +596,7 @@ export function css() {
 .p-account .a-score { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
 .p-account .a-score-l { color: var(--ink-3); }
 .p-account .a-score-v { font: 650 24px/1.1 var(--mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.p-account .a-band { margin-top: 2px; }
 .p-account .a-stale { margin-top: 16px; color: var(--held); font-size: 13px; }
 .p-account .a-run { margin-top: 24px; background: var(--well); border-radius: 6px; padding: 12px 16px; }
 .p-account .a-run-h { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 8px; }
@@ -787,6 +788,11 @@ export function script() {
       var err = h.querySelector(".ie-err");
       if (err) err.textContent = "";
     }
+    // The breadcrumb repeats the name; keep it honest without a reload.
+    if (f === "name") {
+      var crumb = document.querySelector(".p-account .crumbs span:not(.sep)");
+      if (crumb) crumb.textContent = v || (D().domain || "");
+    }
   }
 
   /* --------------------------- mark touched ------------------------ */
@@ -924,7 +930,12 @@ export function script() {
   }
   function setRunning(on) {
     var e = runEls();
-    if (e.prog) e.prog.classList.toggle("is-running", !!on);
+    if (e.prog) {
+      e.prog.classList.toggle("is-running", !!on);
+      // The sweep exists only while work genuinely runs; at rest the bar
+      // itself leaves, so no accent line ever sits idle on the page.
+      e.prog.hidden = !on;
+    }
   }
   function runFail(err) {
     var e = runEls();

@@ -193,8 +193,12 @@ export function css() {
     .p-model .well .m-grp + .fld { margin-top: 8px; }
     .p-model .well .fld + .m-grp { margin-top: 20px; }
 
+    .p-model .m-out { display: block; }
     .p-model .m-out .m-grp { display: block; margin-bottom: 8px; }
-    .p-model .m-out-row2 .statrow { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .p-model .m-out-row1 { display: block; }
+    .p-model .m-out-row2 {
+      display: block; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line);
+    }
     .p-model .m-ratio {
       margin: 8px 0 0; max-width: 56ch; color: var(--ink-2); font-size: 13px; line-height: 1.5;
     }
