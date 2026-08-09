@@ -680,6 +680,7 @@ export function css() {
   return `
 .p-coverage .cov-wrap { margin-top: 24px; }
 .p-coverage .cov-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+.p-coverage .cov-main { min-width: 0; }
 
 /* ---- the field: the product's one dark surface ---- */
 .p-coverage .cov-field {

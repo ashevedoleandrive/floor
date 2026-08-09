@@ -10,6 +10,13 @@ import { renderSettings, settingsScript } from "./lib/views-settings.js";
 import { sourceSummary, loadSourceRules, loadAllSourceRules, classifyEvidence, classifySource, ruleUsage, TIERS } from "./lib/sources.js";
 import { computeCoverage } from "./lib/coverage.js";
 import { shell as kitShell } from "./ui/kit.js";
+import * as pageAccount  from "./ui/page-account.js";
+import * as pageCoverage from "./ui/page-coverage.js";
+import * as pageEvals    from "./ui/page-evals.js";
+import * as pageModel    from "./ui/page-model.js";
+import * as pageSettings from "./ui/page-settings.js";
+import * as pageSources  from "./ui/page-sources.js";
+import * as pageWired    from "./ui/page-wired.js";
 import {
   updateAccount, archiveAccount, unarchiveAccount, assessmentHistory,
   deleteAssessment, restoreAssessment, updateGold, addGold, archiveGold,
@@ -32,8 +39,28 @@ const html = (body) =>
  * collide over a shared loader. Adding a page is one line here and one new file.
  */
 const PAGES = {
-  // "/": { mod: pageQueue, data: (env) => buildQueue(env) },
+  "/coverage": { mod: pageCoverage, data: (env) => computeCoverage(env) },
+  "/settings": { mod: pageSettings, data: (env) => settingsData(env) },
+  "/sources":  { mod: pageSources,  data: () => sourceSummary() },
+  "/evals":    { mod: pageEvals,    data: async (env) => ({ evals: await listEvals(env), gold: await listGold(env) }) },
+  "/model":    { mod: pageModel,    data: (env) => buildQueue(env) },
+  "/wired":    { mod: pageWired,    data: (env) => buildQueue(env) },
 };
+
+/** Settings needs its own payload: the settings themselves plus the cost context
+ *  each field's consequence line refers to. */
+async function settingsData(env) {
+  const settings = await getSettings(env);
+  const budget = await makeBudget(env);
+  const q = await buildQueue(env);
+  return {
+    settings,
+    budget: { spent: budget.spent(), cap: budget.cap },
+    assessed: q.cost.assessed,
+    total_accounts: q.cost.total_accounts,
+    cost_per_account: q.cost.per_account,
+  };
+}
 
 /** Render a rebuilt page: fetch its data, get the body, wrap it in the shell. */
 async function renderPage(entry, env, ctx) {
@@ -160,7 +187,11 @@ export default {
         const d = normaliseDomain(decodeURIComponent(p.slice(9)));
         const detail = d ? await accountDetail(env, d) : null;
         if (!detail?.account) return new Response("Not found", { status: 404 });
-        return html(await renderAccount(env, detail, { lang, t }));
+        return html(await renderPage(
+          { mod: pageAccount, data: () => detail },
+          env,
+          { lang, t, path: p }
+        ));
       }
       return new Response("Not found", { status: 404 });
     } catch (err) {
