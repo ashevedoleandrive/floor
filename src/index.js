@@ -224,6 +224,11 @@ export default {
         return written(async () => updateCard(env, id, await request.json().catch(() => ({}))));
       }
 
+      // Retired tabs keep resolving so shared links and bookmarks never 404.
+      // Sources lives inside Coverage now, Day one inside Case.
+      if (p === "/sources") return new Response(null, { status: 301, headers: { location: "/coverage#registry" } });
+      if (p === "/wired")   return new Response(null, { status: 301, headers: { location: "/model#wired" } });
+
       // Rebuilt pages, served from src/ui/. The migration runs page by page:
       // anything registered here uses the new foundation, anything absent falls
       // through to the legacy renderer below and keeps working untouched.

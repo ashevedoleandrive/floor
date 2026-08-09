@@ -26,7 +26,10 @@ const BASE = process.argv.includes("--url")
 // the gate read 120 passing while the Settings page shipped with no stylesheet at
 // all. A page that is not fetched is not checked, and an unchecked page is where
 // the bug goes. Every route the router serves belongs here.
-const PAGES = ["/", "/sources", "/evals", "/model", "/backlog", "/wired", "/settings", "/account/zalando.com"];
+// Six surfaces now. /sources and /wired are 301s into the pages that absorbed
+// them, so they are checked as redirects rather than as pages.
+const PAGES = ["/", "/coverage", "/evals", "/model", "/backlog", "/settings", "/account/zalando.com"];
+const REDIRECTS = [["/sources", "/coverage#registry"], ["/wired", "/model#wired"]];
 
 const API = [
   ["/api/health", (d) => d.ok === true && typeof d.mode === "string"],
@@ -172,7 +175,12 @@ async function main() {
       seen.add(href);
       try {
         const r = await get(href);
-        r.status === 200 ? ok(`${href}`) : bad(`${href} returns ${r.status} (linked from ${page})`);
+        // A 301 is a working link. Retired tabs redirect into the pages that
+        // absorbed them, and treating that as broken would fail the gate for
+        // doing exactly what it was asked to do.
+        [200, 301, 302].includes(r.status)
+          ? ok(`${href}${r.status !== 200 ? ` (${r.status})` : ""}`)
+          : bad(`${href} returns ${r.status} (linked from ${page})`);
       } catch (e) { bad(`${href} threw: ${e.message}`); }
     }
   }
@@ -333,6 +341,15 @@ async function main() {
     else if (pinned) bad(`${pinned} gauge bar(s) run to the end of the track, so the scale clamps below the real maximum (${top.toLocaleString()} txn/mo)`);
     else ok(`gauge accommodates the largest account (${top.toLocaleString()} txn/mo)`);
   } catch (e) { warn(`gauge ceiling check failed: ${e.message}`); }
+
+  console.log("\nRetired tabs still resolve");
+  for (const [from, to] of REDIRECTS) {
+    try {
+      const r = await get(from);
+      (r.status === 301 || r.status === 302) ? ok(`${from} redirects to ${to}`)
+        : bad(`${from} returned ${r.status}, so an old link 404s instead of landing`);
+    } catch (e) { bad(`${from} threw: ${e.message}`); }
+  }
 
   console.log("\nDemo invariants");
   // Added 2026-08-09 after a verification run left DoorDash stamped with a

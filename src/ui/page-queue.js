@@ -37,19 +37,37 @@ export const meta = {
 
 export const keys = {
   "q.meta": {
-    en: "{n} accounts · {a} assessed · {c} measured cost per account",
-    es: "{n} cuentas · {a} analizadas · {c} de costo medido por cuenta",
+    en: "{n} accounts · {a} assessed · {ab} abstained ({r}) · {c} per assessment",
+    es: "{n} cuentas · {a} analizadas · {ab} sin estimación ({r}) · {c} por análisis",
   },
-  "q.introDismiss": { en: "Got it", es: "Entendido" },
-  "q.assessNote": {
-    en: "Research, extraction, then an adversarial critic. Two to four minutes, about {cost} per account, and it abstains out loud when the evidence will not carry a number.",
-    es: "Investigación, extracción y un crítico adversarial. De dos a cuatro minutos, unos {cost} por cuenta, y se abstiene en voz alta cuando la evidencia no sostiene un número.",
+  "q.metaNone": {
+    en: "{n} accounts · none assessed yet",
+    es: "{n} cuentas · ninguna analizada todavía",
   },
-  "q.cachedNote": {
-    en: "Live runs resume tomorrow. Every stored assessment, filter and export below still works.",
-    es: "Los análisis en vivo vuelven mañana. Cada análisis guardado, los filtros y la exportación siguen funcionando.",
+  "q.how": { en: "How this ranks", es: "Cómo se ordena" },
+  "q.assessMeta": {
+    en: "Research, extract, critic · 2 to 4 minutes · {cost} measured average",
+    es: "Investigación, extracción, crítico · 2 a 4 minutos · {cost} promedio medido",
   },
-  "q.window": { en: "change it in Settings", es: "se cambia en Ajustes" },
+  "q.cachedShort": {
+    en: "Live runs resume tomorrow.",
+    es: "Los análisis en vivo vuelven mañana.",
+  },
+  "q.colEst": {
+    en: "Est. txn / mo vs {floor} floor",
+    es: "Trx / mes est. vs umbral {floor}",
+  },
+  "q.bandMed": {
+    en: "median {mid} · {conf} confidence",
+    es: "mediana {mid} · {conf} de confianza",
+  },
+  "q.bandCost": {
+    en: "{n} × {per} = {total} to assess all",
+    es: "{n} × {per} = {total} para analizarlas todas",
+  },
+  "q.windowDays": { en: "{days}-day window", es: "ventana de {days} días" },
+  "q.rangeNote":  { en: "range {lo} to {hi}", es: "rango {lo} a {hi}" },
+  "q.sigNone":    { en: "No dated trigger on file.", es: "Sin señal con fecha registrada." },
   "q.filterEmpty": {
     en: "No rows match the filter in this band.",
     es: "Ninguna fila coincide con el filtro en esta banda.",
@@ -74,10 +92,6 @@ export const keys = {
   "q.restore":  { en: "Restore", es: "Restaurar" },
 
   "q.archived": { en: "Archived", es: "Archivadas" },
-  "q.archivedSub": {
-    en: "out of the queue, never deleted. Restore returns a row ranked exactly where its data puts it.",
-    es: "fuera de la cola, nunca eliminadas. Restaurar devuelve la fila al puesto exacto que sus datos le dan.",
-  },
   "q.archivedOn": { en: "Archived", es: "Archivada" },
 
   "q.editTitle": { en: "Edit {name}", es: "Editar {name}" },
@@ -85,10 +99,7 @@ export const keys = {
   "q.fRegion": { en: "Region", es: "Región" },
   "q.fOwner":  { en: "Owner", es: "Responsable" },
   "q.fTouched": { en: "Last touched", es: "Último contacto" },
-  "q.fTouchedHint": {
-    en: "Feeds the cool-down score. YYYY-MM-DD, never in the future.",
-    es: "Alimenta el enfriamiento. AAAA-MM-DD, nunca en el futuro.",
-  },
+  "q.fTouchedHint": { en: "YYYY-MM-DD", es: "AAAA-MM-DD" },
   "q.editEffect": {
     en: "Region and last touched feed the score, so the queue re-ranks when you save.",
     es: "La región y el último contacto alimentan el puntaje, así que la cola se reordena al guardar.",
@@ -182,9 +193,10 @@ export function css() {
   /* working header */
   .p-queue .whead-t { flex-wrap: wrap; }
 
-  /* first-run strip + assess bar */
-  .p-queue .q-intro { margin-top: 16px; display: flex; gap: 16px; align-items: baseline; justify-content: space-between; }
+  /* the argument, folded away: opened from the header, never at rest */
+  .p-queue .q-intro { margin-top: 16px; }
   .p-queue .q-intro p { max-width: 72ch; font-size: 13px; color: var(--ink-2); }
+  .p-queue .q-intro p + p { margin-top: 8px; color: var(--ink-3); }
   .p-queue .q-assess { margin-top: 16px; }
   .p-queue .q-assess-f { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .p-queue .q-assess-f .q-dom { flex: 1 1 220px; min-width: 180px; }
@@ -220,7 +232,7 @@ export function css() {
 
   /* bands */
   .p-queue .q-band { margin-top: 24px; }
-  .p-queue .q-bandh { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; }
+  .p-queue .q-bandh { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; flex-wrap: wrap; }
   .p-queue .q-bandh h2 { flex: none; }
   .p-queue .q-sq { width: 8px; height: 8px; flex: none; align-self: center; }
   .p-queue .q-sq-work { background: var(--ok); }
@@ -230,7 +242,9 @@ export function css() {
   .p-queue .q-sq-below { background: var(--bad); }
   .p-queue .q-sq-unscored { background: transparent; border: 1px solid var(--ink-4); }
   .p-queue .q-bandn { font-family: var(--mono); font-size: 12px; color: var(--ink-3); flex: none; }
-  .p-queue .q-bandr { font-size: 12px; color: var(--ink-3); min-width: 0; }
+  /* the band's own measurement, not a sentence about the band */
+  .p-queue .q-bandm { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-3); flex: none; white-space: nowrap; }
+  .p-queue .q-bandm a { color: var(--accent); }
   .p-queue .q-bandempty { margin-top: 8px; }
 
   /* column alignment across the band tables: fixed layout so every band
@@ -987,10 +1001,12 @@ export function script() {
 
   document.addEventListener("floor:action", function (e) {
     var a = e.detail.action, id = e.detail.id, el = e.detail.el;
-    if (a === "dismiss-intro") {
-      try { localStorage.setItem("floor_q_intro", "1"); } catch (err) {}
+    if (a === "toggle-intro") {
       var s = q("#q-intro");
-      if (s) s.hidden = true;
+      if (!s) return;
+      s.hidden = !s.hidden;
+      if (el) el.setAttribute("aria-expanded", s.hidden ? "false" : "true");
+      if (!s.hidden) s.scrollIntoView({ block: "nearest" });
     }
     else if (a === "open-add") { var d1 = q("#dlg-add"); if (d1) d1.showModal(); }
     else if (a === "import") importAccounts();
@@ -1031,13 +1047,6 @@ export function script() {
   readQD();
   readURL();
   apply();
-  (function () {
-    var s = q("#q-intro");
-    if (!s) return;
-    var seen = false;
-    try { seen = localStorage.getItem("floor_q_intro") === "1"; } catch (e) {}
-    if (!seen) s.hidden = false;
-  })();
 })();`;
 }
 
@@ -1131,14 +1140,18 @@ export async function render(env, data, ctx) {
     </div>`;
   };
 
+  /* mark plus word, and the word carries the date the state turns on.
+     "never touched" is the honest word for a null, not "fresh". */
   const coolCell = (r) => {
     if (r.cooldown_state === "suppressed") {
-      return `<div class="q-cd">${mark("half", T("cool.word.held"), { tone: "warn" })}<span class="q-cd-until">→ ${esc(dateISO(r.cooldown_until))}</span></div>`;
+      return `<div class="q-cd">${mark("half", T("cool.held", { date: dateISO(r.cooldown_until) }), { tone: "warn" })}</div>`;
     }
     if (r.cooldown_state === "eligible") {
-      return `<div class="q-cd">${mark("filled", T("cool.eligible"), { tone: "ok" })}</div>`;
+      const when = dateISO(r.last_touched_at);
+      return `<div class="q-cd">${mark("filled", T("cool.eligible"), { tone: "ok" })}${
+        when ? `<span class="q-cd-until">${esc(T("cool.lastTouched", { date: when }))}</span>` : ""}</div>`;
     }
-    return `<div class="q-cd">${mark("hollow", T("cool.word.fresh"), { tone: "mute" })}</div>`;
+    return `<div class="q-cd">${mark("hollow", T("cool.neverTouched"), { tone: "mute" })}</div>`;
   };
 
   const scoreCell = (r) =>

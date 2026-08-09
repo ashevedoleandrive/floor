@@ -838,6 +838,7 @@ export const COPY = {
   "set.saveFail":    { en: "Could not save: {err}", es: "No se pudo guardar: {err}" },
 
   // ---- kit (foundation layer; appended by the foundation author) ----------
+  "nav.case":     { en: "Case", es: "Caso" },
   "nav.coverage":         { en: "Coverage", es: "Cobertura" },
   "kit.context":          { en: "Yuno SDR", es: "Yuno SDR" },
   "kit.skip":             { en: "Skip to content", es: "Saltar al contenido" },

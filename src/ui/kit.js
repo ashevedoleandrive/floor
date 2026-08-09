@@ -359,10 +359,21 @@ const FAVICON = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' view
 
 /* Nav: three clusters divided by hairlines (§4.0). Settings lives in
    the identity cluster on the right, beside the language switch. */
+/**
+ * Six items, not eight.
+ *
+ * Sources folded into Coverage because they answer one question, what this tool
+ * can see and how well, and the product argues that itself: coverage and
+ * measurability are one constraint, so two tabs contradicted the sentence on the
+ * screen. Day one folded into Case because neither it nor Impact is a working
+ * surface; both are arguments about value, now and wired, split across two tabs.
+ *
+ * Eight tabs for 38 accounts read as over-built. A tool earns trust by being
+ * small and dense, not by having a page per capability.
+ */
 const NAV_CLUSTERS = [
-  [["/", "nav.queue"], ["/coverage", "nav.coverage"]],
-  [["/sources", "nav.sources"], ["/evals", "nav.accuracy"]],
-  [["/model", "nav.impact"], ["/backlog", "nav.backlog"], ["/wired", "nav.dayone"]],
+  [["/", "nav.queue"], ["/coverage", "nav.coverage"], ["/evals", "nav.accuracy"]],
+  [["/model", "nav.case"], ["/backlog", "nav.backlog"]],
 ];
 
 const scopeOf = (path, nav) => {
