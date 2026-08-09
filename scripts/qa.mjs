@@ -142,6 +142,10 @@ async function main() {
     const ids = new Set();
     for (const m2 of js.matchAll(/(?:getElementById|\$\$?)\(\s*["'`]#?([a-zA-Z][\w-]*)["'`]/g)) ids.add(m2[1]);
     const declared = new Set(Object.values(REQUIRED).flat().filter((x) => x.startsWith("#")).map((x) => x.slice(1)));
+    // Some elements the client looks up, it also creates when absent (the toast
+    // stack, the bulk bar). Those are not missing, so warning about them trains
+    // people to ignore the warnings that matter.
+    for (const m2 of js.matchAll(/\.id\s*=\s*["']([\w-]+)["']/g)) declared.add(m2[1]);
     const anywhere = Object.values(html).join("\n");
     for (const id of ids) {
       if (declared.has(id)) continue;
