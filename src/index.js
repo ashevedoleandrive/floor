@@ -16,8 +16,6 @@ import * as pageCoverage from "./ui/page-coverage.js";
 import * as pageEvals    from "./ui/page-evals.js";
 import * as pageModel    from "./ui/page-model.js";
 import * as pageSettings from "./ui/page-settings.js";
-import * as pageSources  from "./ui/page-sources.js";
-import * as pageWired    from "./ui/page-wired.js";
 import * as pageBacklog  from "./ui/page-backlog.js";
 import * as pageQueue    from "./ui/page-queue.js";
 import {
@@ -50,7 +48,6 @@ const PAGES = {
     sourceRegistry: sourceSummary(env),
   }) },
   "/settings": { mod: pageSettings, data: (env) => settingsData(env) },
-  "/sources":  { mod: pageSources,  data: (env) => sourceSummary(env) },
   "/evals":    { mod: pageEvals,    data: async (env) => {
     const [evals, gold, q] = [await listEvals(env), await listGold(env), await buildQueue(env)];
     // Every unverified row carries the links Floor already found, so verifying
@@ -71,7 +68,6 @@ const PAGES = {
              suggest: suggestGold({ goldRows: gold.rows, queueRows: q.rows }) };
   } },
   "/model":    { mod: pageModel,    data: (env) => buildQueue(env) },
-  "/wired":    { mod: pageWired,    data: (env) => buildQueue(env) },
   "/backlog":  { mod: pageBacklog,  data: (env) => listBacklog(env, { includeArchived: true }) },
 };
 
